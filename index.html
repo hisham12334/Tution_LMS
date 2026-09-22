@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar Learning — LMS Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark">N</span><span>NORTHSTAR</span></div>
+        <div class="cohort">COHORT <span>09</span></div>
+        <nav class="nav" id="studentNav">
+          <button class="nav-item active" data-page="home"><span>⌂</span> Home</button>
+          <button class="nav-item" data-page="classroom"><span>▣</span> Classroom</button>
+          <button class="nav-item" data-page="assignments"><span>✓</span> Assignments <b>2</b></button>
+          <button class="nav-item" data-page="progress"><span>◔</span> Progress</button>
+          <button class="nav-item" data-page="people"><span>♧</span> People</button>
+          <button class="nav-item" data-page="feedback"><span>□</span> Feedback</button>
+        </nav>
+        <div class="sidebar-bottom">
+          <button class="nav-item" data-page="profile"><span>⚙</span> My profile</button>
+          <button class="nav-item"><span>↪</span> Log out</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="mobile-brand"><span class="brand-mark">N</span> NORTHSTAR</div>
+          <div class="role-switch" aria-label="Preview role">
+            <button class="role active" data-role="student">Student</button>
+            <button class="role" data-role="admin">Teacher / Admin</button>
+          </div>
+          <div class="user-tools"><button class="bell" aria-label="Notifications">♧<i></i></button><div class="avatar">AM</div><span class="user-name">Aarav Mehta</span></div>
+        </header>
+
+        <section id="studentView" class="view">
+          <div class="student-wrap">
+            <div class="eyebrow">STUDENT DASHBOARD <span></span> MONDAY, 22 SEPTEMBER</div>
+            <section class="hero">
+              <div class="hero-title">PICK UP<br>WHERE YOU<br>LEFT OFF.</div>
+              <div class="lesson-card">
+                <div class="lesson-top"><span class="tag">NEXT UP</span><span class="duration">18 MIN</span></div>
+                <p class="mini-label">RECORDED LESSON</p>
+                <h1>Algebra II:<br><em>Quadratic</em> equations</h1>
+                <p class="lesson-copy">Master the formula, factoring, and graphing with Ms. Nandita.</p>
+                <div class="lesson-footer"><div class="teacher-face">N</div><span>WITH NANDITA SHARMA</span><button class="watch" data-action="watch">Continue <span>→</span></button></div>
+              </div>
+            </section>
+
+            <section class="dashboard-grid">
+              <article class="panel week-panel">
+                <div class="panel-label">THIS WEEK</div>
+                <div class="week-item"><div class="number">01</div><div><h3>Algebra II: Quadratic equations</h3><p>Recorded · Complete before Thursday's live class.</p></div><button class="small-btn" data-action="watch">START</button><span class="arrow">→</span></div>
+                <div class="week-item muted"><div class="number">02</div><div><h3>Live problem-solving workshop</h3><p>Thu, 25 Sep · 5:30 PM</p></div><span class="calendar-badge">LIVE</span><span class="arrow">→</span></div>
+              </article>
+              <article class="panel clear-panel"><div class="spark">✦</div><h3>YOU'RE ON TRACK</h3><p>No overdue work. Keep your streak going!</p><div class="streak"><b>4</b> day learning streak <span>↗</span></div></article>
+            </section>
+
+            <section class="progress-panel panel"><div class="progress-summary"><span>YOUR COURSE PROGRESS</span><strong>6 <small>/ 12</small></strong></div><div class="progress-track" aria-label="50 percent complete"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i></i><i></i><i></i><i></i><i></i><i></i></div><p>Halfway through Foundation Mathematics · <button class="text-button" data-page="progress">See progress</button></p></section>
+
+            <section class="upcoming"><div class="section-title">UPCOMING</div><article class="upcoming-row"><div class="date"><b>25</b><span>SEP</span></div><span class="class-tag">LIVE CLASS</span><div class="upcoming-name"><h3>Algebra II: Quadratics workshop</h3><p>Bring your questions · Room 3</p></div><div class="time">5:30 PM</div><span class="arrow">→</span></article><article class="upcoming-row"><div class="date"><b>27</b><span>SEP</span></div><span class="class-tag task">DUE</span><div class="upcoming-name"><h3>Assignment 03: Quadratics in context</h3><p>20 marks · Estimated time: 45 mins</p></div><div class="time">11:59 PM</div><span class="arrow">→</span></article></section>
+          </div>
+        </section>
+
+        <section id="adminView" class="view hidden">
+          <div class="admin-wrap">
+            <div class="admin-heading"><div><p class="eyebrow">TEACHER WORKSPACE <span></span> MONDAY, 22 SEPTEMBER</p><h1>Good morning,<br><em>Nandita.</em></h1></div><button class="primary" data-action="create">+ Create lesson</button></div>
+            <div class="metrics"><article><span>ACTIVE STUDENTS</span><b>148</b><p class="up">↗ 12% <small>vs last month</small></p></article><article><span>AVG. COMPLETION</span><b>76<small>%</small></b><div class="bar"><i style="width:76%"></i></div></article><article><span>WORK TO REVIEW</span><b>18</b><p><strong>7</strong> due today</p></article><article><span>NEXT LIVE CLASS</span><b class="time-big">5:30</b><p>Thu, 25 Sep · Room 3</p></article></div>
+            <div class="admin-grid"><section class="admin-panel review"><div class="section-head"><h2>Needs your review <span>18</span></h2><button>View all →</button></div><div class="review-row"><div class="student-avatar purple">RK</div><div><b>Riya Kapoor</b><p>Assignment 03 · Quadratics in context</p></div><span class="submitted">SUBMITTED 12M AGO</span><button class="outline" data-action="review">Review</button></div><div class="review-row"><div class="student-avatar orange">KV</div><div><b>Kabir Verma</b><p>Assignment 03 · Quadratics in context</p></div><span class="submitted">SUBMITTED 34M AGO</span><button class="outline" data-action="review">Review</button></div><div class="review-row"><div class="student-avatar green">SI</div><div><b>Sana Iqbal</b><p>Assignment 03 · Quadratics in context</p></div><span class="submitted">SUBMITTED 1H AGO</span><button class="outline" data-action="review">Review</button></div></section><section class="admin-panel course-health"><div class="section-head"><h2>Course health</h2><button>View analytics →</button></div><div class="donut"><div><b>76%</b><span>COMPLETED</span></div></div><div class="health-list"><p><i class="dot teal"></i> On track <b>112</b></p><p><i class="dot yellow"></i> Needs attention <b>24</b></p><p><i class="dot coral"></i> At risk <b>12</b></p></div></section></div>
+            <section class="admin-panel schedule"><div class="section-head"><h2>This week's schedule</h2><button>Open calendar →</button></div><div class="schedule-items"><div><span class="datebox"><b>25</b> SEP</span><p><strong>Live workshop: Quadratics</strong><br>5:30 PM – 6:30 PM · Room 3</p><span class="live-dot">LIVE</span></div><div><span class="datebox"><b>27</b> SEP</span><p><strong>Assignment 03 deadline</strong><br>All cohorts · 11:59 PM</p><span class="status">DUE</span></div></div></section>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast"><span>✓</span><div><b id="toastTitle">Lesson opened</b><p id="toastText">This interaction will connect to your live system.</p></div><button id="closeToast">×</button></div>
+    <script src="app.js"></script>
+  </body>
+</html>
