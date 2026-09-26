@@ -1,5 +1,7 @@
 # Northstar Learning LMS — approval prototype
 
+The proposed system architecture, roles, data model, flows, and build order are in [ARCHITECTURE.md](ARCHITECTURE.md). The current files are a visual prototype; application implementation begins after the architecture is agreed.
+
 Open `index.html` in a browser to review the front-end concept.
 
 ## What this prototype demonstrates
