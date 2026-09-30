@@ -69,6 +69,9 @@
     display: block;
     appearance: none;
     -webkit-appearance: none;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
     min-height: 44px;
     margin: 0;
     padding: 12px 46px 12px 15px;
