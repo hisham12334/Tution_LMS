@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { configured, supabase } from './supabase';
-import { createMaterial, getCompletions, getLessons, getProfile, getSpaces, getStudents, markComplete, openMaterial } from './data';
-import type { Completion, CourseSpace, Lesson, Profile } from './types';
+import { assignTeacher, createCohort, createCourse, createMaterial, enrollStudent, getAdminDirectory, getCompletions, getLessons, getProfile, getSpaces, getStudents, markComplete, offerCourse, openMaterial } from './data';
+import type { AdminDirectory, Completion, CourseSpace, Lesson, Profile } from './types';
 
-type Page = 'home' | 'classroom' | 'progress' | 'students' | 'upload';
+type Page = 'home' | 'setup' | 'classroom' | 'progress' | 'students' | 'upload';
 const message = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 const initials = (name: string) => name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
 const date = (value: string) => new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(value));
@@ -16,6 +16,7 @@ export default function App() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [completions, setCompletions] = useState<Completion[]>([]);
   const [students, setStudents] = useState<Profile[]>([]);
+  const [directory, setDirectory] = useState<AdminDirectory>({ profiles: [], cohorts: [], courses: [] });
   const [page, setPage] = useState<Page>('home');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -35,6 +36,7 @@ export default function App() {
       const found = await getSpaces(p.role, data.user.id);
       setSpaces(found);
       setSpaceId(current => found.some(space => space.id === current) ? current : found[0]?.id ?? '');
+      setDirectory(p.role === 'admin' ? await getAdminDirectory() : { profiles: [], cohorts: [], courses: [] });
     } catch (failure) { setError(message(failure)); }
     finally { setLoading(false); }
   }, []);
@@ -47,6 +49,7 @@ export default function App() {
   }, [signedIn]);
 
   const staff = profile?.role === 'teacher' || profile?.role === 'admin';
+  const admin = profile?.role === 'admin';
   const activeSpace = spaces.find(space => space.id === spaceId);
   const refresh = useCallback(async () => {
     if (!profile || !spaceId) { setLessons([]); setCompletions([]); setStudents([]); return; }
@@ -94,20 +97,33 @@ export default function App() {
     catch (failure) { setError(message(failure)); }
   }
 
+  async function refreshAdminDirectory() {
+    const [found, people] = await Promise.all([getSpaces('admin', userId!), getAdminDirectory()]);
+    setSpaces(found);
+    setDirectory(people);
+    setSpaceId(current => found.some(space => space.id === current) ? current : found[0]?.id ?? '');
+    setNotice('Centre setup updated.');
+  }
+
   if (!configured) return <main className="gate"><div className="gate-card"><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><h1>Connect your LMS</h1><p>Add the Supabase project URL and publishable key to <code>app/.env.local</code>, then restart the app. Setup is explained in the project README.</p></div></main>;
   if (!profile) return <main className="gate"><form className="gate-card" onSubmit={signIn}><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><p className="eyebrow">WELCOME BACK</p><h1>Sign in to learn.</h1><label>Email<input type="email" name="email" autoComplete="username" required /></label><label>Password<input type="password" name="password" autoComplete="current-password" required /></label>{error && <p role="alert" className="alert">{error}</p>}<button className="primary" disabled={busy || loading}>{busy ? 'Signing in…' : 'Sign in →'}</button><p className="helper">Accounts are created by the tuition centre. Ask your admin for access.</p></form></main>;
 
-  const nav: Array<{ page: Page; label: string; icon: string }> = staff
+  const nav: Array<{ page: Page; label: string; icon: string }> = admin
+    ? [{ page: 'home', label: 'Centre overview', icon: '⌂' }, { page: 'setup', label: 'Manage centre', icon: '⚙' }, { page: 'classroom', label: 'Materials', icon: '▣' }, { page: 'students', label: 'Students', icon: '♧' }, { page: 'upload', label: 'Upload material', icon: '+' }]
+    : staff
     ? [{ page: 'home', label: 'Overview', icon: '⌂' }, { page: 'classroom', label: 'Materials', icon: '▣' }, { page: 'students', label: 'Students', icon: '♧' }, { page: 'upload', label: 'Upload material', icon: '+' }]
     : [{ page: 'home', label: 'Home', icon: '⌂' }, { page: 'classroom', label: 'Classroom', icon: '▣' }, { page: 'progress', label: 'Progress', icon: '◔' }];
 
   return <div className="shell">
-    <aside className="sidebar"><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><div className="cohort">{staff ? 'STAFF WORKSPACE' : 'STUDENT PORTAL'}</div><nav className="nav">{nav.map(item => <button key={item.page} className={`nav-item ${page === item.page ? 'active' : ''}`} onClick={() => setPage(item.page)}><span>{item.icon}</span>{item.label}</button>)}</nav><div className="sidebar-bottom"><div className="side-person">{profile.display_name}<small>{profile.role}</small></div><button className="nav-item" onClick={() => void supabase?.auth.signOut()}><span>↪</span>Log out</button></div></aside>
+    <aside className="sidebar"><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><div className="cohort">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT PORTAL'}</div><nav className="nav">{nav.map(item => <button key={item.page} className={`nav-item ${page === item.page ? 'active' : ''}`} onClick={() => setPage(item.page)}><span>{item.icon}</span>{item.label}</button>)}</nav><div className="sidebar-bottom"><div className="side-person">{profile.display_name}<small>{profile.role}</small></div><button className="nav-item" onClick={() => void supabase?.auth.signOut()}><span>↪</span>Log out</button></div></aside>
     <main className="main"><header className="topbar"><select aria-label="Course and cohort" value={spaceId} onChange={e => setSpaceId(e.target.value)}>{spaces.length ? spaces.map(space => <option key={space.id} value={space.id}>{space.cohortName} · {space.courseTitle}</option>) : <option value="">No courses assigned</option>}</select><span className="role-pill">{profile.role}</span><div className="avatar">{initials(profile.display_name)}</div><strong>{profile.display_name}</strong></header>
-      <div className="content">{error && <div role="alert" className="alert">{error}</div>}{notice && <div role="status" className="notice">{notice}<button onClick={() => setNotice('')}>×</button></div>}{!activeSpace ? <Empty title="No course yet" text={staff ? 'An admin needs to assign you to a cohort and course.' : 'Your tuition centre has not enrolled you in a course yet.'} /> : <>
-        <p className="eyebrow">{staff ? 'TEACHER WORKSPACE' : 'STUDENT DASHBOARD'} <span></span> {activeSpace.cohortName.toUpperCase()}</p>
+      <div className="content">{error && <div role="alert" className="alert">{error}</div>}{notice && <div role="status" className="notice">{notice}<button onClick={() => setNotice('')}>×</button></div>}
+        {admin && page === 'home' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE OPERATIONS</p><AdminOverview directory={directory} spaces={spaces} onManage={() => setPage('setup')} /></>}
+        {admin && page === 'setup' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE SETUP</p><AdminSetup directory={directory} spaces={spaces} onSaved={refreshAdminDirectory} /></>}
+        {(!admin || (page !== 'home' && page !== 'setup')) && (!activeSpace ? <Empty title="No course yet" text={profile.role === 'teacher' ? 'An admin needs to assign you to a cohort and course.' : 'Your tuition centre has not enrolled you in a course yet.'} /> : <>
+        <p className="eyebrow">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT DASHBOARD'} <span></span> {activeSpace.cohortName.toUpperCase()} · {activeSpace.courseTitle.toUpperCase()}</p>
         {staff ? <>
-          {(page === 'home' || page === 'students') && <StaffOverview students={students} lessons={published} completions={completions} onUpload={() => setPage('upload')} />}
+          {(page === 'home' || page === 'students') && <StaffOverview students={students} lessons={published} completions={completions} onUpload={() => setPage('upload')} admin={admin} />}
           {page === 'classroom' && <LessonList lessons={lessons} completed={new Set()} staff onOpen={view} onComplete={finish} busy={busy} />}
           {page === 'upload' && <UploadForm space={activeSpace} userId={userId!} onDone={async () => { setNotice('Material uploaded and published.'); await refresh(); setPage('classroom'); }} />}
         </> : <>
@@ -115,9 +131,46 @@ export default function App() {
           {page === 'classroom' && <LessonList lessons={published} completed={myCompleted} onOpen={view} onComplete={finish} busy={busy} />}
           {page === 'progress' && <Progress lessons={published} completed={myCompleted} onOpen={view} onComplete={finish} busy={busy} />}
         </>}
-      </>}{loading && <p className="loading">Loading latest course data…</p>}</div>
+      </>) }{loading && <p className="loading">Loading latest course data…</p>}</div>
     </main>
   </div>;
+}
+
+function AdminOverview({ directory, spaces, onManage }: { directory: AdminDirectory; spaces: CourseSpace[]; onManage: () => void }) {
+  const students = directory.profiles.filter(person => person.role === 'student').length;
+  const teachers = directory.profiles.filter(person => person.role === 'teacher').length;
+  return <>
+    <div className="page-title title-action"><div><h1>CENTRE<br /><em>OVERVIEW.</em></h1><p>Manage learning spaces, people, and teaching assignments across the centre.</p></div><button className="primary" onClick={onManage}>Manage centre →</button></div>
+    <div className="metrics"><article><span>STUDENTS</span><b>{students}</b><p>Accounts in the centre</p></article><article><span>TEACHERS</span><b>{teachers}</b><p>Teaching staff</p></article><article><span>LEARNING SPACES</span><b>{spaces.length}</b><p>Cohort and course pairings</p></article></div>
+    <section className="panel roster"><div className="section-head"><h2>Learning spaces</h2><span>{directory.cohorts.length} cohorts · {directory.courses.length} courses</span></div>{spaces.length ? spaces.map(space => <div className="student-row" key={space.id}><div className="student-avatar">{initials(space.cohortName)}</div><div className="student-name"><strong>{space.cohortName}</strong><small>{space.courseTitle}</small></div><span className="type-tag">ACTIVE SPACE</span></div>) : <p className="muted-text">No cohort and course pairings yet. Add them in Manage centre.</p>}</section>
+  </>;
+}
+
+function AdminSetup({ directory, spaces, onSaved }: { directory: AdminDirectory; spaces: CourseSpace[]; onSaved: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(event: FormEvent<HTMLFormElement>, action: (data: FormData) => Promise<void>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    setBusy(true); setError('');
+    try { await action(new FormData(form)); form.reset(); await onSaved(); }
+    catch (failure) { setError(message(failure)); }
+    finally { setBusy(false); }
+  }
+  const teachers = directory.profiles.filter(person => person.role === 'teacher');
+  const students = directory.profiles.filter(person => person.role === 'student');
+  return <>
+    <div className="page-title"><h1>MANAGE<br /><em>THE CENTRE.</em></h1><p>Set up cohorts and courses, then connect existing accounts to the right learning spaces.</p></div>
+    {error && <div role="alert" className="alert">{error}</div>}
+    <div className="admin-setup-grid">
+      <form className="panel admin-form" onSubmit={event => void submit(event, data => createCohort(String(data.get('name'))))}><h2>Create a cohort</h2><p>Add a teaching group or intake.</p><label>Cohort name<input name="name" required minLength={2} maxLength={100} placeholder="e.g. Year 10 · Autumn" /></label><button className="primary" disabled={busy}>Create cohort</button></form>
+      <form className="panel admin-form" onSubmit={event => void submit(event, data => createCourse(String(data.get('title'))))}><h2>Create a course</h2><p>Add a subject to offer to cohorts.</p><label>Course name<input name="title" required minLength={2} maxLength={100} placeholder="e.g. Mathematics" /></label><button className="primary" disabled={busy}>Create course</button></form>
+      <form className="panel admin-form" onSubmit={event => void submit(event, data => offerCourse(String(data.get('cohort_id')), String(data.get('course_id'))))}><h2>Open a learning space</h2><p>Pair a cohort with a course.</p><label>Cohort<select name="cohort_id" required defaultValue=""><option value="" disabled>Select a cohort</option>{directory.cohorts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Course<select name="course_id" required defaultValue=""><option value="" disabled>Select a course</option>{directory.courses.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><button className="primary" disabled={busy || !directory.cohorts.length || !directory.courses.length}>Create learning space</button></form>
+      <form className="panel admin-form" onSubmit={event => void submit(event, data => assignTeacher(String(data.get('space_id')), String(data.get('teacher_id'))))}><h2>Assign a teacher</h2><p>Give a teacher access to an existing learning space.</p><label>Learning space<select name="space_id" required defaultValue=""><option value="" disabled>Select a space</option>{spaces.map(item => <option key={item.id} value={item.id}>{item.cohortName} · {item.courseTitle}</option>)}</select></label><label>Teacher<select name="teacher_id" required defaultValue=""><option value="" disabled>Select a teacher</option>{teachers.map(person => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label><button className="primary" disabled={busy || !spaces.length || !teachers.length}>Assign teacher</button></form>
+      <form className="panel admin-form" onSubmit={event => void submit(event, data => enrollStudent(String(data.get('cohort_id')), String(data.get('student_id'))))}><h2>Enroll a student</h2><p>Give a student access to all courses offered to their cohort.</p><label>Cohort<select name="cohort_id" required defaultValue=""><option value="" disabled>Select a cohort</option>{directory.cohorts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Student<select name="student_id" required defaultValue=""><option value="" disabled>Select a student</option>{students.map(person => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label><button className="primary" disabled={busy || !students.length || !directory.cohorts.length}>Enroll student</button></form>
+    </div>
+    <p className="helper">This manages existing accounts and their access. Create or invite Auth accounts from Supabase before assigning them here.</p>
+  </>;
 }
 
 function Empty({ title, text }: { title: string; text: string }) { return <section className="empty"><span>✦</span><h2>{title}</h2><p>{text}</p></section>; }
@@ -137,10 +190,10 @@ function Progress({ lessons, completed, onOpen, onComplete, busy }: { lessons: L
   return <><div className="page-title"><h1>YOUR PROGRESS.</h1><p>Completion is recorded when you choose “Mark complete.”</p></div><section className="panel progress-large"><span className="eyebrow">PUBLISHED MATERIALS</span><div className="progress-number">{completed.size}<small> / {lessons.length} complete</small></div><div className="meter"><i style={{ width: `${percent}%` }} /></div><p>{percent}% complete</p></section><LessonList lessons={lessons} completed={completed} onOpen={onOpen} onComplete={onComplete} busy={busy} /></>;
 }
 
-function StaffOverview({ students, lessons, completions, onUpload }: { students: Profile[]; lessons: Lesson[]; completions: Completion[]; onUpload: () => void }) {
+function StaffOverview({ students, lessons, completions, onUpload, admin = false }: { students: Profile[]; lessons: Lesson[]; completions: Completion[]; onUpload: () => void; admin?: boolean }) {
   const finished = completions.filter(c => lessons.some(l => l.id === c.lesson_id));
   const average = students.length && lessons.length ? Math.round(finished.length / (students.length * lessons.length) * 100) : 0;
-  return <><div className="page-title title-action"><div><h1>STUDENT<br /><em>INVOLVEMENT.</em></h1><p>See who has finished the materials you published.</p></div><button className="primary" onClick={onUpload}>+ Upload material</button></div><div className="metrics"><article><span>STUDENTS</span><b>{students.length}</b><p>In this cohort</p></article><article><span>PUBLISHED MATERIALS</span><b>{lessons.length}</b><p>Recordings and readings</p></article><article><span>AVG. COMPLETION</span><b>{average}<small>%</small></b><div className="meter"><i style={{ width: `${average}%` }} /></div></article></div><section className="panel roster"><div className="section-head"><h2>Progress by student</h2><span>{students.length} students</span></div>{students.length ? students.map(student => { const own = finished.filter(c => c.student_id === student.id); const count = own.length; const studentPercent = lessons.length ? Math.round(count / lessons.length * 100) : 0; const latest = own.length ? own.map(c => c.completed_at).sort().at(-1)! : null; return <div className="student-row" key={student.id}><div className="student-avatar">{initials(student.display_name)}</div><div className="student-name"><strong>{student.display_name}</strong><small>{latest ? `Last completed ${date(latest)}` : 'No lessons completed yet'}</small></div><div className="student-meter"><div className="meter"><i style={{ width: `${studentPercent}%` }} /></div><span>{count} / {lessons.length}</span></div><b>{studentPercent}%</b></div>; }) : <p className="muted-text">No students enrolled in this cohort yet.</p>}</section></>;
+  return <><div className="page-title title-action"><div><h1>{admin ? <>CENTRE<br /><em>PROGRESS.</em></> : <>STUDENT<br /><em>INVOLVEMENT.</em></>}</h1><p>{admin ? 'Review progress for the selected cohort and course.' : 'See who has finished the materials you published.'}</p></div><button className="primary" onClick={onUpload}>+ Upload material</button></div><div className="metrics"><article><span>STUDENTS</span><b>{students.length}</b><p>In this cohort</p></article><article><span>PUBLISHED MATERIALS</span><b>{lessons.length}</b><p>Recordings and readings</p></article><article><span>AVG. COMPLETION</span><b>{average}<small>%</small></b><div className="meter"><i style={{ width: `${average}%` }} /></div></article></div><section className="panel roster"><div className="section-head"><h2>Progress by student</h2><span>{students.length} students</span></div>{students.length ? students.map(student => { const own = finished.filter(c => c.student_id === student.id); const count = own.length; const studentPercent = lessons.length ? Math.round(count / lessons.length * 100) : 0; const latest = own.length ? own.map(c => c.completed_at).sort().at(-1)! : null; return <div className="student-row" key={student.id}><div className="student-avatar">{initials(student.display_name)}</div><div className="student-name"><strong>{student.display_name}</strong><small>{latest ? `Last completed ${date(latest)}` : 'No lessons completed yet'}</small></div><div className="student-meter"><div className="meter"><i style={{ width: `${studentPercent}%` }} /></div><span>{count} / {lessons.length}</span></div><b>{studentPercent}%</b></div>; }) : <p className="muted-text">No students enrolled in this cohort yet.</p>}</section></>;
 }
 
 function UploadForm({ space, userId, onDone }: { space: CourseSpace; userId: string; onDone: () => Promise<void> }) {

@@ -13,7 +13,7 @@ The app needs a Supabase project before live data can be used. No Supabase crede
 1. Create a Supabase project and apply [`supabase/migrations/202609260001_learning_slice.sql`](supabase/migrations/202609260001_learning_slice.sql) in the SQL Editor. Use a fresh project; the migration creates its own tables and bucket.
 2. In Supabase Auth, create the first users using email/password. New users get a `student` profile automatically. Promote the staff accounts in SQL Editor: `update public.profiles set role = 'admin' where id = (select id from auth.users where email = 'ADMIN_EMAIL');` and similarly set `role = 'teacher'` for each teacher. This bootstrap SQL is performed by the project owner, never from the web app.
 3. Create at least one cohort and course in the Supabase Table Editor, then a `cohort_courses` row linking them. Add student IDs to `cohort_members` and teacher IDs to `teacher_assignments` for that cohort/course. Admin setup screens and invitations are the next implementation slice.
-4. Copy `app/.env.example` to `app/.env.local` and replace both placeholders with the project's URL and **publishable** key. Never put a service-role key in a `VITE_` variable.
+4. Copy `app/.env.example` to `app/.env.local` and replace both placeholders with the project's URL and browser-safe **publishable/anon** key. The app accepts either `VITE_SUPABASE_PUBLISHABLE_KEY` or the older `VITE_SUPABASE_ANON_KEY` name. Never put a service-role key in a `VITE_` variable.
 5. In `app/`, run `npm install` and `npm run dev`. Open the local URL shown by Vite.
 
 Run `npm run build` from `app/` to check the TypeScript and production bundle. The root prototype can still be opened independently for visual review.

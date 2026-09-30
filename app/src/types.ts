@@ -1,6 +1,11 @@
 export type Role = 'student' | 'teacher' | 'admin';
 export type Profile = { id: string; display_name: string; role: Role };
 export type CourseSpace = { id: string; courseTitle: string; cohortName: string };
+export type AdminDirectory = {
+  profiles: Profile[];
+  cohorts: Array<{ id: string; name: string }>;
+  courses: Array<{ id: string; title: string }>;
+};
 export type Lesson = {
   id: string;
   cohort_course_id: string;

@@ -1,6 +1,6 @@
 import * as tus from 'tus-js-client';
 import { supabase, supabaseUrl } from './supabase';
-import type { Completion, CourseSpace, Lesson, Profile, Role } from './types';
+import type { AdminDirectory, Completion, CourseSpace, Lesson, Profile, Role } from './types';
 
 const db = () => {
   if (!supabase) throw new Error('Supabase is not configured.');
@@ -37,6 +37,39 @@ export async function getSpaces(role: Role, userId: string): Promise<CourseSpace
   const courseMap = new Map(unwrap<Array<{ id: string; title: string }>>(courses).map(c => [c.id, c.title]));
   const cohortMap = new Map(unwrap<Array<{ id: string; name: string }>>(cohorts).map(c => [c.id, c.name]));
   return rows.map(r => ({ id: r.id, courseTitle: courseMap.get(r.course_id) ?? 'Course', cohortName: cohortMap.get(r.cohort_id) ?? 'Cohort' }));
+}
+
+export async function getAdminDirectory(): Promise<AdminDirectory> {
+  const [profiles, cohorts, courses] = await Promise.all([
+    db().from('profiles').select('id,display_name,role').order('display_name'),
+    db().from('cohorts').select('id,name').order('name'),
+    db().from('courses').select('id,title').order('title')
+  ]);
+  return {
+    profiles: unwrap<Profile[]>(profiles),
+    cohorts: unwrap<AdminDirectory['cohorts']>(cohorts),
+    courses: unwrap<AdminDirectory['courses']>(courses)
+  };
+}
+
+export async function createCohort(name: string): Promise<void> {
+  unwrap(await db().from('cohorts').insert({ name: name.trim() }));
+}
+
+export async function createCourse(title: string): Promise<void> {
+  unwrap(await db().from('courses').insert({ title: title.trim() }));
+}
+
+export async function offerCourse(cohortId: string, courseId: string): Promise<void> {
+  unwrap(await db().from('cohort_courses').insert({ cohort_id: cohortId, course_id: courseId }));
+}
+
+export async function assignTeacher(spaceId: string, teacherId: string): Promise<void> {
+  unwrap(await db().from('teacher_assignments').insert({ cohort_course_id: spaceId, teacher_id: teacherId }));
+}
+
+export async function enrollStudent(cohortId: string, studentId: string): Promise<void> {
+  unwrap(await db().from('cohort_members').insert({ cohort_id: cohortId, student_id: studentId }));
 }
 
 export async function getLessons(spaceId: string, role: Role): Promise<Lesson[]> {
