@@ -1,0 +1,181 @@
+.mobile-brand,
+.mobile-course-label,
+.mobile-logout,
+.mobile-nav {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; width: 100%; min-width: 0; }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 9px 14px;
+    min-height: 0;
+    padding: 11px 20px 12px;
+    background: #f5f3ed;
+  }
+  .mobile-brand { display: flex; font-size: 16px; min-width: 0; white-space: nowrap; }
+  .mobile-brand small {
+    font: 700 9px 'DM Mono';
+    text-transform: uppercase;
+    letter-spacing: 0;
+    color: #66645f;
+    margin-left: 5px;
+  }
+  .mobile-course-label {
+    display: block;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font: 800 10px 'DM Mono';
+    text-transform: uppercase;
+    color: #66645f;
+  }
+  .topbar select {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    min-height: 44px;
+    margin: 0;
+    background: #fffefa;
+    font-size: 16px;
+  }
+  .topbar .role-pill,
+  .topbar .avatar,
+  .topbar strong { display: none; }
+  .mobile-logout {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid #171815;
+    background: transparent;
+    color: #171815;
+    font: 800 11px Manrope;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .content { max-width: 760px; padding: 24px 20px calc(110px + env(safe-area-inset-bottom)); }
+  .mobile-nav {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 30;
+    display: flex;
+    justify-content: space-around;
+    min-height: 64px;
+    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+    border-top: 1px solid #bdb9ac;
+    background: #faf9f4;
+    box-shadow: 0 -4px 18px #17181512;
+  }
+  .mobile-nav-item {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 54px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    background: transparent;
+    color: #52534e;
+    font: 800 10px Manrope;
+    text-transform: uppercase;
+  }
+  .mobile-nav-item span { font-size: 23px; font-weight: 400; line-height: 1; }
+  .mobile-nav-item small { font: inherit; overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-nav-item.active { color: #185d59; background: #e4eee7; border-radius: 7px; }
+  .mobile-nav-item:focus-visible,
+  .mobile-logout:focus-visible { outline: 3px solid #185d59; outline-offset: 2px; }
+  .hero { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .hero > div { padding-bottom: 24px; }
+  .hero h1,
+  .page-title h1 { font-size: clamp(38px, 8vw, 60px); letter-spacing: -2.5px; }
+  .feature { min-width: 0; min-height: 265px; }
+  .feature h2 { font-size: clamp(31px, 6vw, 42px); overflow-wrap: anywhere; }
+  .feature .watch { margin-top: 28px; }
+  .title-action { flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+  .title-action .primary { min-height: 44px; }
+  .overview-grid,
+  .admin-setup-grid { gap: 16px; }
+  .admin-form,
+  .upload-form,
+  .panel { min-width: 0; }
+  .student-name,
+  .row-main { min-width: 0; overflow-wrap: anywhere; }
+  .student-avatar { flex: none; }
+  .student-row { flex-wrap: wrap; }
+  .student-meter { width: 150px; }
+  .lesson-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px 12px;
+  }
+  .row-actions { grid-column: 2; display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .row-actions button,
+  .completed { min-height: 44px; }
+  .completed { display: inline-flex; align-items: center; }
+  .upload-form input,
+  .upload-form select,
+  .upload-form textarea,
+  .admin-form input,
+  .admin-form select,
+  .gate-card input { font-size: 16px; min-height: 44px; }
+  .admin-form .primary,
+  .upload-form .primary,
+  .gate-card .primary { min-height: 44px; }
+  .notice button { min-width: 44px; min-height: 44px; }
+}
+
+@media (max-width: 640px) {
+  .topbar { padding: 9px 15px 11px; }
+  .content { padding: 19px 15px calc(108px + env(safe-area-inset-bottom)); }
+  .mobile-brand { font-size: 15px; }
+  .mobile-brand small { font-size: 8px; }
+  .hero h1,
+  .page-title h1 { font-size: clamp(37px, 10.5vw, 47px); letter-spacing: -2.5px; }
+  .page-title { margin: 16px 0 22px; }
+  .page-title p,
+  .hero p { line-height: 1.5; }
+  .feature { padding: 22px; min-height: 250px; }
+  .feature h2 { margin-top: 22px; }
+  .panel { padding: 18px; }
+  .section-label { margin: -18px 0 20px -18px; }
+  .section-head { gap: 10px; flex-wrap: wrap; }
+  .section-head h2 { font-size: 21px; }
+  .section-head .link { min-height: 44px; padding: 0 5px; }
+  .title-action .primary { width: 100%; }
+  .metrics article { padding: 18px; }
+  .student-row {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 6px 10px;
+  }
+  .student-name small { font-size: 11px; line-height: 1.4; }
+  .student-meter { grid-column: 2; grid-row: 2; width: 100%; max-width: none; min-width: 0; }
+  .student-row > b { grid-column: 3; grid-row: 2; width: auto; }
+  .student-row .type-tag { grid-column: 2 / -1; justify-self: start; }
+  .row-actions { flex-direction: row; }
+  .row-actions button { min-width: 110px; }
+  .admin-form .primary,
+  .upload-form .primary { width: 100%; justify-self: stretch; }
+  .gate { align-items: start; padding: 16px; min-height: 100dvh; }
+  .gate-card { padding: 25px 20px; margin-top: max(20px, 5vh); }
+}
+
+@media (max-width: 380px) {
+  .mobile-brand small { display: none; }
+  .mobile-nav { padding-right: 3px; padding-left: 3px; }
+  .mobile-nav-item { font-size: 9px; }
+  .lesson-row { grid-template-columns: 23px minmax(0, 1fr); gap: 8px; }
+  .status-tag { display: inline-block; margin: 5px 0 0; }
+}

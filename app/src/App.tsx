@@ -108,15 +108,20 @@ export default function App() {
   if (!configured) return <main className="gate"><div className="gate-card"><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><h1>Connect your LMS</h1><p>Add the Supabase project URL and publishable key to <code>app/.env.local</code>, then restart the app. Setup is explained in the project README.</p></div></main>;
   if (!profile) return <main className="gate"><form className="gate-card" onSubmit={signIn}><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><p className="eyebrow">WELCOME BACK</p><h1>Sign in to learn.</h1><label>Email<input type="email" name="email" autoComplete="username" required /></label><label>Password<input type="password" name="password" autoComplete="current-password" required /></label>{error && <p role="alert" className="alert">{error}</p>}<button className="primary" disabled={busy || loading}>{busy ? 'Signing in…' : 'Sign in →'}</button><p className="helper">Accounts are created by the tuition centre. Ask your admin for access.</p></form></main>;
 
-  const nav: Array<{ page: Page; label: string; icon: string }> = admin
-    ? [{ page: 'home', label: 'Centre overview', icon: '⌂' }, { page: 'setup', label: 'Manage centre', icon: '⚙' }, { page: 'classroom', label: 'Materials', icon: '▣' }, { page: 'students', label: 'Students', icon: '♧' }, { page: 'upload', label: 'Upload material', icon: '+' }]
+  const nav: Array<{ page: Page; label: string; mobileLabel: string; icon: string }> = admin
+    ? [{ page: 'home', label: 'Centre overview', mobileLabel: 'Home', icon: '⌂' }, { page: 'setup', label: 'Manage centre', mobileLabel: 'Manage', icon: '⚙' }, { page: 'classroom', label: 'Materials', mobileLabel: 'Materials', icon: '▣' }, { page: 'students', label: 'Students', mobileLabel: 'Students', icon: '♧' }, { page: 'upload', label: 'Upload material', mobileLabel: 'Upload', icon: '+' }]
     : staff
-    ? [{ page: 'home', label: 'Overview', icon: '⌂' }, { page: 'classroom', label: 'Materials', icon: '▣' }, { page: 'students', label: 'Students', icon: '♧' }, { page: 'upload', label: 'Upload material', icon: '+' }]
-    : [{ page: 'home', label: 'Home', icon: '⌂' }, { page: 'classroom', label: 'Classroom', icon: '▣' }, { page: 'progress', label: 'Progress', icon: '◔' }];
+    ? [{ page: 'home', label: 'Overview', mobileLabel: 'Home', icon: '⌂' }, { page: 'classroom', label: 'Materials', mobileLabel: 'Materials', icon: '▣' }, { page: 'students', label: 'Students', mobileLabel: 'Students', icon: '♧' }, { page: 'upload', label: 'Upload material', mobileLabel: 'Upload', icon: '+' }]
+    : [{ page: 'home', label: 'Home', mobileLabel: 'Home', icon: '⌂' }, { page: 'classroom', label: 'Classroom', mobileLabel: 'Classroom', icon: '▣' }, { page: 'progress', label: 'Progress', mobileLabel: 'Progress', icon: '◔' }];
+
+  function navigate(next: Page) {
+    setPage(next);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
 
   return <div className="shell">
-    <aside className="sidebar"><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><div className="cohort">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT PORTAL'}</div><nav className="nav">{nav.map(item => <button key={item.page} className={`nav-item ${page === item.page ? 'active' : ''}`} onClick={() => setPage(item.page)}><span>{item.icon}</span>{item.label}</button>)}</nav><div className="sidebar-bottom"><div className="side-person">{profile.display_name}<small>{profile.role}</small></div><button className="nav-item" onClick={() => void supabase?.auth.signOut()}><span>↪</span>Log out</button></div></aside>
-    <main className="main"><header className="topbar"><select aria-label="Course and cohort" value={spaceId} onChange={e => setSpaceId(e.target.value)}>{spaces.length ? spaces.map(space => <option key={space.id} value={space.id}>{space.cohortName} · {space.courseTitle}</option>) : <option value="">No courses assigned</option>}</select><span className="role-pill">{profile.role}</span><div className="avatar">{initials(profile.display_name)}</div><strong>{profile.display_name}</strong></header>
+    <aside className="sidebar"><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><div className="cohort">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT PORTAL'}</div><nav className="nav">{nav.map(item => <button key={item.page} className={`nav-item ${page === item.page ? 'active' : ''}`} onClick={() => navigate(item.page)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>)}</nav><div className="sidebar-bottom"><div className="side-person">{profile.display_name}<small>{profile.role}</small></div><button className="nav-item" onClick={() => void supabase?.auth.signOut()}><span aria-hidden="true">↪</span>Log out</button></div></aside>
+    <main className="main"><header className="topbar"><div className="mobile-brand brand"><span className="brand-mark">N</span>NORTHSTAR <small>{profile.role}</small></div><label className="mobile-course-label" htmlFor="active-course">Course and cohort</label><select id="active-course" aria-label="Course and cohort" value={spaceId} onChange={e => setSpaceId(e.target.value)}>{spaces.length ? spaces.map(space => <option key={space.id} value={space.id}>{space.cohortName} · {space.courseTitle}</option>) : <option value="">No courses assigned</option>}</select><span className="role-pill">{profile.role}</span><div className="avatar">{initials(profile.display_name)}</div><strong>{profile.display_name}</strong><button className="mobile-logout" onClick={() => void supabase?.auth.signOut()}>Log out</button></header>
       <div className="content">{error && <div role="alert" className="alert">{error}</div>}{notice && <div role="status" className="notice">{notice}<button onClick={() => setNotice('')}>×</button></div>}
         {admin && page === 'home' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE OPERATIONS</p><AdminOverview directory={directory} spaces={spaces} onManage={() => setPage('setup')} /></>}
         {admin && page === 'setup' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE SETUP</p><AdminSetup directory={directory} spaces={spaces} onSaved={refreshAdminDirectory} /></>}
@@ -133,6 +138,7 @@ export default function App() {
         </>}
       </>) }{loading && <p className="loading">Loading latest course data…</p>}</div>
     </main>
+    <nav className="mobile-nav" aria-label="Mobile navigation">{nav.map(item => <button key={item.page} className={`mobile-nav-item ${page === item.page ? 'active' : ''}`} aria-current={page === item.page ? 'page' : undefined} onClick={() => navigate(item.page)}><span aria-hidden="true">{item.icon}</span><small>{item.mobileLabel}</small></button>)}</nav>
   </div>;
 }
 
