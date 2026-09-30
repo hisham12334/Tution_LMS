@@ -12,15 +12,24 @@ The app needs a Supabase project before live data can be used. No Supabase crede
 
 1. Create a Supabase project and apply [`supabase/migrations/202609260001_learning_slice.sql`](supabase/migrations/202609260001_learning_slice.sql) in the SQL Editor. Use a fresh project; the migration creates its own tables and bucket.
 2. In Supabase Auth, create the first users using email/password. New users get a `student` profile automatically. Promote the staff accounts in SQL Editor: `update public.profiles set role = 'admin' where id = (select id from auth.users where email = 'ADMIN_EMAIL');` and similarly set `role = 'teacher'` for each teacher. This bootstrap SQL is performed by the project owner, never from the web app.
-3. Create at least one cohort and course in the Supabase Table Editor, then a `cohort_courses` row linking them. Add student IDs to `cohort_members` and teacher IDs to `teacher_assignments` for that cohort/course. Admin setup screens and invitations are the next implementation slice.
+3. Sign in as an admin and use **Manage centre** to create cohorts and courses, pair them into learning spaces, assign existing teacher accounts, and enroll existing student accounts. Create accounts in Supabase Auth first; setting roles and sending invitations are still owner-managed.
 4. Copy `app/.env.example` to `app/.env.local` and replace both placeholders with the project's URL and browser-safe **publishable/anon** key. The app accepts either `VITE_SUPABASE_PUBLISHABLE_KEY` or the older `VITE_SUPABASE_ANON_KEY` name. Never put a service-role key in a `VITE_` variable.
 5. In `app/`, run `npm install` and `npm run dev`. Open the local URL shown by Vite.
 
 Run `npm run build` from `app/` to check the TypeScript and production bundle. The root prototype can still be opened independently for visual review.
 
+### Temporary client demo (Netlify)
+
+The root [`netlify.toml`](netlify.toml) configures Netlify to build `app/` and publish its `dist/` output. Import this GitHub repository into Netlify with `main` as the production branch, then add these site environment variables before the first deploy:
+
+- `VITE_SUPABASE_URL` — the Supabase project URL.
+- `VITE_SUPABASE_ANON_KEY` — the browser-safe anon/publishable key (or use `VITE_SUPABASE_PUBLISHABLE_KEY`).
+
+These Vite values are included in the public browser bundle; never use a service-role key. After Netlify creates the site URL, set it as the Supabase Auth Site URL and add the site URL to Auth Redirect URLs so confirmation and password-reset links can return to the hosted app. Use demo accounts and sample data for the client presentation.
+
 ### Current boundary
 
-The connected code is ready for a Supabase project, but live sign-in, upload, and progress cannot be tested end-to-end until that project and two test accounts exist. Assignments, grading, live-class links, notifications, and admin onboarding remain later slices in the architecture plan.
+The connected code is ready for a Supabase project, but live sign-in, upload, and progress require that project and test accounts. Assignments, grading, live-class links, notifications, and in-app account invitations and role management remain later slices in the architecture plan.
 
 Open `index.html` in a browser to review the front-end concept.
 
