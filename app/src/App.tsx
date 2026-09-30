@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { configured, supabase } from './supabase';
-import { assignTeacher, createCohort, createCourse, createMaterial, enrollStudent, getAdminDirectory, getCompletions, getLessons, getProfile, getSpaces, getStudents, markComplete, offerCourse, openMaterial } from './data';
+import { arrivingFromEmail, configured, supabase } from './supabase';
+import { assignTeacher, createCohort, createCourse, createMaterial, enrollStudent, getAdminDirectory, getCompletions, getLessons, getProfile, getSpaces, getStudents, inviteAccount, markComplete, offerCourse, openMaterial } from './data';
 import type { AdminDirectory, Completion, CourseSpace, Lesson, Profile } from './types';
 
 type Page = 'home' | 'setup' | 'classroom' | 'progress' | 'students' | 'upload';
@@ -22,6 +22,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [setupPassword, setSetupPassword] = useState(arrivingFromEmail);
 
   const signedIn = useCallback(async () => {
     if (!supabase) return;
@@ -44,7 +46,10 @@ export default function App() {
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
     void signedIn();
-    const { data } = supabase.auth.onAuthStateChange(() => { void signedIn(); });
+    const { data } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'PASSWORD_RECOVERY') setSetupPassword(true);
+      void signedIn();
+    });
     return () => data.subscription.unsubscribe();
   }, [signedIn]);
 
@@ -97,16 +102,46 @@ export default function App() {
     catch (failure) { setError(message(failure)); }
   }
 
-  async function refreshAdminDirectory() {
+  async function requestPasswordReset() {
+    if (!supabase) return;
+    if (!emailInput.trim()) { setError('Enter your email address first.'); return; }
+    setBusy(true); setError(''); setNotice('');
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(emailInput.trim());
+    if (resetError) setError(resetError.message);
+    else setNotice('If this account exists, a password reset link is on its way.');
+    setBusy(false);
+  }
+
+  async function savePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return;
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get('password'));
+    if (password !== form.get('confirm')) { setError('Passwords do not match.'); return; }
+    setBusy(true); setError('');
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    if (updateError) setError(updateError.message);
+    else {
+      const url = new URL(window.location.href);
+      url.hash = '';
+      window.history.replaceState({}, '', url);
+      setSetupPassword(false);
+      setNotice('Your password is ready. Welcome to Northstar.');
+    }
+    setBusy(false);
+  }
+
+  async function refreshAdminDirectory(messageText = 'Centre setup updated.') {
     const [found, people] = await Promise.all([getSpaces('admin', userId!), getAdminDirectory()]);
     setSpaces(found);
     setDirectory(people);
     setSpaceId(current => found.some(space => space.id === current) ? current : found[0]?.id ?? '');
-    setNotice('Centre setup updated.');
+    setNotice(messageText);
   }
 
   if (!configured) return <main className="gate"><div className="gate-card"><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><h1>Connect your LMS</h1><p>Add the Supabase project URL and publishable key to <code>app/.env.local</code>, then restart the app. Setup is explained in the project README.</p></div></main>;
-  if (!profile) return <main className="gate"><form className="gate-card" onSubmit={signIn}><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><p className="eyebrow">WELCOME BACK</p><h1>Sign in to learn.</h1><label>Email<input type="email" name="email" autoComplete="username" required /></label><label>Password<input type="password" name="password" autoComplete="current-password" required /></label>{error && <p role="alert" className="alert">{error}</p>}<button className="primary" disabled={busy || loading}>{busy ? 'Signing in…' : 'Sign in →'}</button><p className="helper">Accounts are created by the tuition centre. Ask your admin for access.</p></form></main>;
+  if (!profile) return <main className="gate"><form className="gate-card" onSubmit={signIn}><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><p className="eyebrow">WELCOME BACK</p><h1>Sign in to learn.</h1><label>Email<input type="email" name="email" autoComplete="username" value={emailInput} onChange={event => setEmailInput(event.target.value)} required /></label><label>Password<input type="password" name="password" autoComplete="current-password" required /></label>{error && <p role="alert" className="alert">{error}</p>}{notice && <p role="status" className="notice">{notice}</p>}<button className="primary" disabled={busy || loading}>{busy ? 'Signing in…' : 'Sign in →'}</button><button type="button" className="link password-help" onClick={() => void requestPasswordReset()} disabled={busy}>Forgot password?</button><p className="helper">Accounts are created by the tuition centre. Ask your admin for access.</p></form></main>;
+  if (setupPassword) return <main className="gate"><form className="gate-card" onSubmit={savePassword}><div className="brand"><span className="brand-mark">N</span>NORTHSTAR</div><p className="eyebrow">ACCOUNT SETUP</p><h1>Set your password.</h1><p>Choose a password to use when signing in.</p><label>New password<input type="password" name="password" autoComplete="new-password" minLength={10} required /></label><label>Confirm password<input type="password" name="confirm" autoComplete="new-password" minLength={10} required /></label>{error && <p role="alert" className="alert">{error}</p>}<button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save password →'}</button></form></main>;
 
   const nav: Array<{ page: Page; label: string; mobileLabel: string; icon: string }> = admin
     ? [{ page: 'home', label: 'Centre overview', mobileLabel: 'Home', icon: '⌂' }, { page: 'setup', label: 'Manage centre', mobileLabel: 'Manage', icon: '⚙' }, { page: 'classroom', label: 'Materials', mobileLabel: 'Materials', icon: '▣' }, { page: 'students', label: 'Students', mobileLabel: 'Students', icon: '♧' }, { page: 'upload', label: 'Upload material', mobileLabel: 'Upload', icon: '+' }]
@@ -152,7 +187,7 @@ function AdminOverview({ directory, spaces, onManage }: { directory: AdminDirect
   </>;
 }
 
-function AdminSetup({ directory, spaces, onSaved }: { directory: AdminDirectory; spaces: CourseSpace[]; onSaved: () => Promise<void> }) {
+function AdminSetup({ directory, spaces, onSaved }: { directory: AdminDirectory; spaces: CourseSpace[]; onSaved: (message?: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function submit(event: FormEvent<HTMLFormElement>, action: (data: FormData) => Promise<void>) {
@@ -163,19 +198,37 @@ function AdminSetup({ directory, spaces, onSaved }: { directory: AdminDirectory;
     catch (failure) { setError(message(failure)); }
     finally { setBusy(false); }
   }
+  async function invite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    setBusy(true); setError('');
+    try {
+      const result = await inviteAccount({
+        displayName: String(values.get('display_name')),
+        email: String(values.get('email')),
+        role: String(values.get('role')) as 'student' | 'teacher'
+      });
+      form.reset();
+      try { await onSaved(result); }
+      catch { setError(`${result} Refresh this page to see the new account.`); }
+    } catch (failure) { setError(message(failure)); }
+    finally { setBusy(false); }
+  }
   const teachers = directory.profiles.filter(person => person.role === 'teacher');
   const students = directory.profiles.filter(person => person.role === 'student');
   return <>
     <div className="page-title"><h1>MANAGE<br /><em>THE CENTRE.</em></h1><p>Set up cohorts and courses, then connect existing accounts to the right learning spaces.</p></div>
     {error && <div role="alert" className="alert">{error}</div>}
     <div className="admin-setup-grid">
+      <form className="panel admin-form account-form" onSubmit={event => void invite(event)}><h2>Invite an account</h2><p>Create a student or teacher account. They receive an email link to set their own password.</p><label>Full name<input name="display_name" required minLength={2} maxLength={100} autoComplete="name" placeholder="e.g. Samira Khan" /></label><label>Email address<input name="email" type="email" required autoComplete="email" placeholder="name@example.com" /></label><label>Account role<select name="role" required defaultValue="student"><option value="student">Student</option><option value="teacher">Teacher</option></select></label><button className="primary" disabled={busy}>{busy ? 'Sending…' : 'Send invitation →'}</button><p className="helper">After inviting, use the forms below to enroll a student or assign a teacher.</p></form>
       <form className="panel admin-form" onSubmit={event => void submit(event, data => createCohort(String(data.get('name'))))}><h2>Create a cohort</h2><p>Add a teaching group or intake.</p><label>Cohort name<input name="name" required minLength={2} maxLength={100} placeholder="e.g. Year 10 · Autumn" /></label><button className="primary" disabled={busy}>Create cohort</button></form>
       <form className="panel admin-form" onSubmit={event => void submit(event, data => createCourse(String(data.get('title'))))}><h2>Create a course</h2><p>Add a subject to offer to cohorts.</p><label>Course name<input name="title" required minLength={2} maxLength={100} placeholder="e.g. Mathematics" /></label><button className="primary" disabled={busy}>Create course</button></form>
       <form className="panel admin-form" onSubmit={event => void submit(event, data => offerCourse(String(data.get('cohort_id')), String(data.get('course_id'))))}><h2>Open a learning space</h2><p>Pair a cohort with a course.</p><label>Cohort<select name="cohort_id" required defaultValue=""><option value="" disabled>Select a cohort</option>{directory.cohorts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Course<select name="course_id" required defaultValue=""><option value="" disabled>Select a course</option>{directory.courses.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><button className="primary" disabled={busy || !directory.cohorts.length || !directory.courses.length}>Create learning space</button></form>
       <form className="panel admin-form" onSubmit={event => void submit(event, data => assignTeacher(String(data.get('space_id')), String(data.get('teacher_id'))))}><h2>Assign a teacher</h2><p>Give a teacher access to an existing learning space.</p><label>Learning space<select name="space_id" required defaultValue=""><option value="" disabled>Select a space</option>{spaces.map(item => <option key={item.id} value={item.id}>{item.cohortName} · {item.courseTitle}</option>)}</select></label><label>Teacher<select name="teacher_id" required defaultValue=""><option value="" disabled>Select a teacher</option>{teachers.map(person => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label><button className="primary" disabled={busy || !spaces.length || !teachers.length}>Assign teacher</button></form>
       <form className="panel admin-form" onSubmit={event => void submit(event, data => enrollStudent(String(data.get('cohort_id')), String(data.get('student_id'))))}><h2>Enroll a student</h2><p>Give a student access to all courses offered to their cohort.</p><label>Cohort<select name="cohort_id" required defaultValue=""><option value="" disabled>Select a cohort</option>{directory.cohorts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Student<select name="student_id" required defaultValue=""><option value="" disabled>Select a student</option>{students.map(person => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label><button className="primary" disabled={busy || !students.length || !directory.cohorts.length}>Enroll student</button></form>
     </div>
-    <p className="helper">This manages existing accounts and their access. Create or invite Auth accounts from Supabase before assigning them here.</p>
+    <p className="helper">Only centre admins can invite accounts. Passwords are chosen by the invitee and are never shown to the admin.</p>
   </>;
 }
 

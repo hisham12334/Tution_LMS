@@ -1,5 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Capture the email-link type before the client consumes the URL fragment.
+export const arrivingFromEmail = ['invite', 'recovery'].includes(
+  new URLSearchParams(window.location.hash.slice(1)).get('type') ?? ''
+);
+
 export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 // Supabase previously documented this browser-safe credential as the anon key.
 // Accept both names so existing local setups keep working during the rename.

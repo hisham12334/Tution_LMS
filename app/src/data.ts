@@ -52,6 +52,20 @@ export async function getAdminDirectory(): Promise<AdminDirectory> {
   };
 }
 
+export async function inviteAccount(input: { displayName: string; email: string; role: 'student' | 'teacher' }): Promise<string> {
+  const { data, error } = await db().functions.invoke<{ message?: string; error?: string }>('invite-account', {
+    body: input
+  });
+  if (error) {
+    const details = 'context' in error && error.context instanceof Response
+      ? await error.context.json().catch(() => null) as { error?: string } | null
+      : null;
+    throw new Error(details?.error || error.message);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data?.message || 'Invitation sent.';
+}
+
 export async function createCohort(name: string): Promise<void> {
   unwrap(await db().from('cohorts').insert({ name: name.trim() }));
 }

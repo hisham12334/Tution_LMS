@@ -12,9 +12,10 @@ The app needs a Supabase project before live data can be used. No Supabase crede
 
 1. Create a Supabase project and apply [`supabase/migrations/202609260001_learning_slice.sql`](supabase/migrations/202609260001_learning_slice.sql) in the SQL Editor. Use a fresh project; the migration creates its own tables and bucket.
 2. In Supabase Auth, create the first users using email/password. New users get a `student` profile automatically. Promote the staff accounts in SQL Editor: `update public.profiles set role = 'admin' where id = (select id from auth.users where email = 'ADMIN_EMAIL');` and similarly set `role = 'teacher'` for each teacher. This bootstrap SQL is performed by the project owner, never from the web app.
-3. Sign in as an admin and use **Manage centre** to create cohorts and courses, pair them into learning spaces, assign existing teacher accounts, and enroll existing student accounts. Create accounts in Supabase Auth first; setting roles and sending invitations are still owner-managed.
-4. Copy `app/.env.example` to `app/.env.local` and replace both placeholders with the project's URL and browser-safe **publishable/anon** key. The app accepts either `VITE_SUPABASE_PUBLISHABLE_KEY` or the older `VITE_SUPABASE_ANON_KEY` name. Never put a service-role key in a `VITE_` variable.
-5. In `app/`, run `npm install` and `npm run dev`. Open the local URL shown by Vite.
+3. Deploy [`supabase/functions/invite-account/index.ts`](supabase/functions/invite-account/index.ts) as the `invite-account` Edge Function in the same Supabase project, keeping JWT verification enabled. The function uses Supabase's built-in `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` server secrets. Never add the service-role key to Netlify or a `VITE_` variable.
+4. Sign in as an admin and use **Manage centre** to invite student and teacher accounts, create cohorts and courses, pair them into learning spaces, assign teachers, and enroll students. New users receive an email invitation and choose their own password in the app. Existing accounts can still be assigned without another invitation.
+5. Copy `app/.env.example` to `app/.env.local` and replace both placeholders with the project's URL and browser-safe **publishable/anon** key. The app accepts either `VITE_SUPABASE_PUBLISHABLE_KEY` or the older `VITE_SUPABASE_ANON_KEY` name. Never put a service-role key in a `VITE_` variable.
+6. In `app/`, run `npm install` and `npm run dev`. Open the local URL shown by Vite.
 
 Run `npm run build` from `app/` to check the TypeScript and production bundle. The root prototype can still be opened independently for visual review.
 
@@ -25,11 +26,11 @@ The root [`netlify.toml`](netlify.toml) configures Netlify to build `app/` and p
 - `VITE_SUPABASE_URL` — the Supabase project URL.
 - `VITE_SUPABASE_ANON_KEY` — the browser-safe anon/publishable key (or use `VITE_SUPABASE_PUBLISHABLE_KEY`).
 
-These Vite values are included in the public browser bundle; never use a service-role key. After Netlify creates the site URL, set it as the Supabase Auth Site URL and add the site URL to Auth Redirect URLs so confirmation and password-reset links can return to the hosted app. Use demo accounts and sample data for the client presentation.
+These Vite values are included in the public browser bundle; never use a service-role key. After Netlify creates the site URL, set it as the Supabase Auth Site URL and add the site URL to Auth Redirect URLs so invitation and password-reset links can return to the hosted app. Deploy the `invite-account` Edge Function to the Supabase project as well; Netlify only deploys the front end. For production invitations and password recovery, configure a custom SMTP provider in Supabase Auth because the built-in email service has strict sending limits. Use demo accounts and sample data for the client presentation.
 
 ### Current boundary
 
-The connected code is ready for a Supabase project, but live sign-in, upload, and progress require that project and test accounts. Assignments, grading, live-class links, notifications, and in-app account invitations and role management remain later slices in the architecture plan.
+Assignments, grading, live-class links, notifications, and broader account management remain later slices in the architecture plan. Admin invitation of student and teacher accounts is implemented through a protected Edge Function.
 
 Open `index.html` in a browser to review the front-end concept.
 

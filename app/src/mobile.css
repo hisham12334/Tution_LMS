@@ -13,6 +13,7 @@
 }
 
 .course-switcher select { width: 100%; }
+.password-help { justify-self: start; min-height: 44px; padding: 0 5px; }
 
 @media (max-width: 900px) {
   .sidebar { display: none; }
