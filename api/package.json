@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "db:migrate": "tsx src/migrate.ts",
     "db:bootstrap-admin": "tsx src/bootstrap-admin.ts",
+    "db:seed-demo": "tsx src/seed-demo.ts",
     "db:cleanup-uploads": "tsx src/cleanup-uploads.ts",
     "db:cleanup-materials": "node dist/cleanup-materials.js"
   },
