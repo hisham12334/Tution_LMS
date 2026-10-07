@@ -1,0 +1,6 @@
+node_modules/
+dist/
+private-storage/
+.env
+.env.*
+!.env.example

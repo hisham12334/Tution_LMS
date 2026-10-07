@@ -214,8 +214,8 @@
 
 @media (max-width: 380px) {
   .mobile-brand small { display: none; }
-  .mobile-nav { padding-right: 3px; padding-left: 3px; }
-  .mobile-nav-item { font-size: 9px; }
+  .mobile-nav { justify-content: flex-start; overflow-x: auto; padding-right: 3px; padding-left: 3px; }
+  .mobile-nav-item { flex: 0 0 68px; font-size: 9px; }
   .lesson-row { grid-template-columns: 23px minmax(0, 1fr); gap: 8px; }
   .status-tag { display: inline-block; margin: 5px 0 0; }
 }

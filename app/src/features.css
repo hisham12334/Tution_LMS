@@ -1,0 +1,30 @@
+.sidebar .brand{font-size:13px;letter-spacing:-.4px;white-space:nowrap}
+.schedule-form h2,.admin-form h2{font:700 20px 'Space Grotesk';margin:0}
+.schedule-form{margin-bottom:28px}
+.date-chip{width:150px;flex:0 0 150px;font:700 11px 'DM Mono';color:#185d59;line-height:1.5}
+.attendance-panel{margin-top:22px}
+.attendance-panel .section-head{margin-top:0}
+.attendance-panel .section-head p{margin:7px 0 0}
+.attendance-row{gap:16px;flex-wrap:wrap}
+.attendance-select{display:grid;gap:5px;font:800 9px 'DM Mono';text-transform:uppercase}
+.attendance-select select{border:1px solid #bcb8aa;background:#fffefa;padding:8px;font:500 12px Manrope}
+.checkbox-label{display:flex;align-items:center;gap:8px;font:700 10px 'DM Mono';text-transform:uppercase}
+.checkbox-label input{accent-color:#185d59;width:18px;height:18px}
+.package-admin-grid{margin:0 0 25px}
+.package-row{border:1px solid #171815;border-top:0;padding:18px;background:#faf9f4;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:15px;align-items:start}
+.package-row:first-child{border-top:1px solid #171815}
+.package-row .row-main{min-width:0}
+.package-row .meter{max-width:420px;margin:12px 0}
+.package-row .due-copy{color:#8a3d2c;font-weight:800}
+.payment-confirm-form{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;border-top:1px solid #d0ccbf;padding-top:16px}
+.payment-confirm-form label{display:grid;gap:7px;text-transform:uppercase;font:800 10px 'DM Mono'}
+.payment-confirm-form input{width:100%;padding:11px;border:1px solid #bcb8aa;background:#fffefa;font:500 13px Manrope;text-transform:none}
+.payment-confirm-form .helper,.payment-confirm-form .primary{grid-column:1/-1}
+.payment-confirm-form .primary{justify-self:start;margin:0}
+.payment-history{display:grid;gap:8px;max-width:550px;border-top:1px solid #d0ccbf;padding-top:12px;margin-top:12px;font-size:11px}
+.payment-history>strong{font:800 9px 'DM Mono';text-transform:uppercase}
+.payment-history>div{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.retention-note{margin:0 0 14px;color:#666355;font-size:12px}
+.delete-material{border-color:#a33b31;color:#8b2c25}
+.delete-material:hover{background:#fff0ed}
+@media(max-width:640px){.date-chip{width:100%;flex-basis:100%}.attendance-row{align-items:flex-start}.payment-confirm-form{grid-template-columns:1fr}.package-row{grid-template-columns:1fr}.package-row>.small-btn{justify-self:start}}
