@@ -27,14 +27,15 @@
     gap: 9px 14px;
     min-height: 0;
     padding: 11px 20px 12px;
-    background: #f5f3ed;
+    background: #f5f8f5;
   }
   .mobile-brand { display: flex; font-size: 16px; min-width: 0; white-space: nowrap; }
+  .mobile-brand .brand-logo { width: 32px; height: 32px; }
   .mobile-brand small {
     font: 700 9px 'DM Mono';
     text-transform: uppercase;
     letter-spacing: 0;
-    color: #66645f;
+    color: #6b7194;
     margin-left: 5px;
   }
   .mobile-course-label {
@@ -43,7 +44,7 @@
     grid-row: 2;
     font: 800 10px 'DM Mono';
     text-transform: uppercase;
-    color: #66645f;
+    color: #6b7194;
   }
   .course-switcher {
     grid-column: 1 / -1;
@@ -60,12 +61,12 @@
     right: 19px;
     width: 9px;
     height: 9px;
-    border-right: 2px solid #185d59;
-    border-bottom: 2px solid #185d59;
+    border-right: 2px solid #163142;
+    border-bottom: 2px solid #163142;
     transform: translateY(-70%) rotate(45deg);
     pointer-events: none;
   }
-  .course-switcher:focus-within::after { border-color: #123f3d; }
+  .course-switcher:focus-within::after { border-color: #102630; }
   .topbar .course-switcher select {
     display: block;
     appearance: none;
@@ -76,16 +77,16 @@
     min-height: 44px;
     margin: 0;
     padding: 12px 46px 12px 15px;
-    border: 1.5px solid #8b8e87;
+    border: 1.5px solid #c5d4c8;
     border-radius: 12px;
-    background: #fffefa;
-    color: #171815;
+    background: #fff;
+    color: #163142;
     font: 800 15px Manrope;
     white-space: nowrap;
     text-overflow: ellipsis;
-    box-shadow: 0 2px 0 #17181512;
+    box-shadow: 0 2px 0 #16314212;
   }
-  .topbar .course-switcher select:focus-visible { outline: 3px solid #185d59; outline-offset: 2px; }
+  .topbar .course-switcher select:focus-visible { outline: 3px solid #163142; outline-offset: 2px; }
   .topbar .role-pill,
   .topbar .avatar,
   .topbar strong { display: none; }
@@ -95,12 +96,13 @@
     grid-row: 1;
     min-height: 44px;
     padding: 0 12px;
-    border: 1px solid #171815;
+    border: 1px solid #163142;
     background: transparent;
-    color: #171815;
+    color: #163142;
     font: 800 11px Manrope;
     text-transform: uppercase;
     white-space: nowrap;
+    border-radius: 8px;
   }
   .content { max-width: 760px; padding: 24px 20px calc(110px + env(safe-area-inset-bottom)); }
   .mobile-nav {
@@ -111,9 +113,9 @@
     justify-content: space-around;
     min-height: 64px;
     padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
-    border-top: 1px solid #bdb9ac;
-    background: #faf9f4;
-    box-shadow: 0 -4px 18px #17181512;
+    border-top: 1px solid #d8e3d9;
+    background: #fff;
+    box-shadow: 0 -4px 18px #16314212;
   }
   .mobile-nav-item {
     display: flex;
@@ -126,15 +128,17 @@
     gap: 3px;
     border: 0;
     background: transparent;
-    color: #52534e;
+    color: #6b7194;
     font: 800 10px Manrope;
     text-transform: uppercase;
+    border-radius: 8px;
+    transition: all .2s;
   }
   .mobile-nav-item span { font-size: 23px; font-weight: 400; line-height: 1; }
   .mobile-nav-item small { font: inherit; overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
-  .mobile-nav-item.active { color: #185d59; background: #e4eee7; border-radius: 7px; }
+  .mobile-nav-item.active { color: #163142; background: #e3edfb; border-radius: 7px; }
   .mobile-nav-item:focus-visible,
-  .mobile-logout:focus-visible { outline: 3px solid #185d59; outline-offset: 2px; }
+  .mobile-logout:focus-visible { outline: 3px solid #163142; outline-offset: 2px; }
   .hero { grid-template-columns: minmax(0, 1fr); min-height: 0; }
   .hero > div { padding-bottom: 24px; }
   .hero h1,
