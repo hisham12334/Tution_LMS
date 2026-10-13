@@ -1,0 +1,5 @@
+# Install as /etc/tution-lms-backup.conf, owned by root with mode 600.
+BACKUP_RCLONE_REMOTE=YOUR_RCLONE_REMOTE:tution-lms
+BACKUP_AGE_RECIPIENT=age1YOUR_PUBLIC_RECIPIENT
+# Optional root-managed alert command, e.g. a script that calls your monitoring service.
+# BACKUP_ALERT_COMMAND=/usr/local/sbin/notify-backup-failure

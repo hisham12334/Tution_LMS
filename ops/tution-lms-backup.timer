@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily encrypted Tution LMS PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+Unit=tution-lms-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -47,7 +47,14 @@ const allow = (...roles: Role[]) => (req: RequestWithUser, res: express.Response
   next();
 };
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.get('/api/health', async (_req, res) => {
+  try {
+    await pool.query('select 1');
+    res.json({ ok: true, database: 'ready' });
+  } catch {
+    res.status(503).json({ ok: false, database: 'unavailable' });
+  }
+});
 app.get('/api/me', session, async (req: RequestWithUser, res, next) => {
   try {
     const result = await query('select id, display_name, role from profiles where id = $1', [req.user!.id]);
