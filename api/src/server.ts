@@ -120,7 +120,11 @@ async function listenForChat() {
       if (!chatStopping) setTimeout(() => void listenForChat(), 1000).unref();
     };
     client.on('notification', notification => {
-      if (notification.channel === 'chat_messages' && notification.payload) chatEvents.emit('changed', notification.payload);
+      if (notification.channel !== 'chat_messages' || !notification.payload) return;
+      try {
+        const event = JSON.parse(notification.payload) as { conversationId?: string; messageId?: string; senderId?: string };
+        if (uuid(event.conversationId) && chatCursor(event.messageId) && typeof event.senderId === 'string') chatEvents.emit('changed', event);
+      } catch (error) { console.error('Invalid chat notification.', error); }
     });
     client.on('error', reconnect);
     client.on('end', reconnect);
@@ -163,15 +167,49 @@ app.get('/api/chat/conversations', session, async (req: RequestWithUser, res, ne
   try {
     const result = await query(`select c.id, c.cohort_course_id as "spaceId", c.student_id as "studentId", c.teacher_id as "teacherId",
       sp.display_name as "studentName", tp.display_name as "teacherName", co.title as "courseTitle", ch.name as "cohortName",
-      last_message.body as "lastMessage", last_message.created_at as "lastAt"
+      last_message.body as "lastMessage", last_message.created_at as "lastAt", unread.count as "unreadCount"
       from chat_conversations c join profiles sp on sp.id=c.student_id join profiles tp on tp.id=c.teacher_id
       join cohort_courses cc on cc.id=c.cohort_course_id join cohorts ch on ch.id=cc.cohort_id join courses co on co.id=cc.course_id
       left join lateral (select body,created_at from chat_messages where conversation_id=c.id order by id desc limit 1) last_message on true
+      left join chat_reads cr on cr.conversation_id=c.id and cr.user_id=$2
+      cross join lateral (select count(*)::int as count from chat_messages m where m.conversation_id=c.id
+        and m.id > coalesce(cr.last_read_message_id,0) and m.sender_id<>$2) unread
       where ($1='admin'
         or ($1='student' and c.student_id=$2 and exists(select 1 from cohort_members cm where cm.cohort_id=cc.cohort_id and cm.student_id=$2))
         or ($1='teacher' and c.teacher_id=$2 and exists(select 1 from teacher_assignments ta where ta.cohort_course_id=cc.id and ta.teacher_id=$2)))
       order by last_message.created_at desc nulls last, c.created_at desc`, [req.role, req.user!.id]);
     res.json(result.rows);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/chat/unread', session, async (req: RequestWithUser, res, next) => {
+  try {
+    const result = await query(`select count(*)::int as count from chat_messages m
+      join chat_conversations c on c.id=m.conversation_id
+      join cohort_courses cc on cc.id=c.cohort_course_id
+      left join chat_reads cr on cr.conversation_id=c.id and cr.user_id=$2
+      where m.id>coalesce(cr.last_read_message_id,0) and m.sender_id<>$2
+      and ($1='admin'
+        or ($1='student' and c.student_id=$2 and exists(select 1 from cohort_members cm where cm.cohort_id=cc.cohort_id and cm.student_id=$2))
+        or ($1='teacher' and c.teacher_id=$2 and exists(select 1 from teacher_assignments ta where ta.cohort_course_id=cc.id and ta.teacher_id=$2)))`,
+      [req.role, req.user!.id]);
+    res.json(result.rows[0]);
+  } catch (error) { next(error); }
+});
+
+app.post('/api/chat/conversations/:conversationId/read', session, async (req: RequestWithUser, res, next) => {
+  try {
+    const id = String(req.params.conversationId);
+    const messageId = chatCursor(req.body?.messageId);
+    if (!uuid(id) || !messageId) return res.status(400).json({ error: 'Invalid read position.' });
+    if (!await canReadConversation(req, id)) return res.status(403).json({ error: 'You do not have access to this conversation.' });
+    const updated = await query(`insert into chat_reads(conversation_id,user_id,last_read_message_id)
+      select m.conversation_id,$2,m.id from chat_messages m where m.conversation_id=$1 and m.id=$3
+      on conflict (conversation_id,user_id) do update set
+        last_read_message_id=greatest(chat_reads.last_read_message_id,excluded.last_read_message_id), read_at=now()
+      returning last_read_message_id`, [id, req.user!.id, messageId]);
+    if (!updated.rowCount) return res.status(400).json({ error: 'Message is not in this conversation.' });
+    res.sendStatus(204);
   } catch (error) { next(error); }
 });
 
@@ -221,7 +259,7 @@ app.post('/api/chat/conversations/:conversationId/messages', session, allow('stu
         or ($4='teacher' and c.teacher_id=$2 and exists(select 1 from teacher_assignments ta where ta.cohort_course_id=cc.id and ta.teacher_id=$2)))
       returning id::text`, [id, req.user!.id, body, req.role]);
     if (!inserted.rowCount) return res.status(403).json({ error: 'You do not have access to send in this conversation.' });
-    await query('select pg_notify($1,$2)', ['chat_messages', id]).catch(error => console.error('Chat notification failed; connected clients will resync.', error));
+    await query('select pg_notify($1,$2)', ['chat_messages', JSON.stringify({ conversationId: id, messageId: inserted.rows[0].id, senderId: req.user!.id })]).catch(error => console.error('Chat notification failed; connected clients will resync.', error));
     res.status(201).json(inserted.rows[0]);
   } catch (error) { next(error); }
 });
@@ -235,9 +273,9 @@ app.get('/api/chat/events', session, async (req: RequestWithUser, res, next) => 
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
     res.write('event: sync\ndata: {}\n\n');
-    const changed = (conversationId: string) => {
-      void canReadConversation(req, conversationId).then(allowed => {
-        if (allowed && !res.writableEnded) res.write(`data: ${JSON.stringify({ conversationId })}\n\n`);
+    const changed = (event: { conversationId: string; messageId: string; senderId: string }) => {
+      void canReadConversation(req, event.conversationId).then(allowed => {
+        if (allowed && !res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
       }).catch(error => console.error('Chat event access check failed.', error));
     };
     chatEvents.on('changed', changed);

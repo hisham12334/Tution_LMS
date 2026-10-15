@@ -3,6 +3,10 @@ import type { AdminDirectory, Attendance, ChatContact, ChatConversation, ChatMes
 
 export async function getChatContacts(spaceId: string): Promise<ChatContact[]> { return api(`/chat/contacts?spaceId=${encodeURIComponent(spaceId)}`); }
 export async function getChatConversations(): Promise<ChatConversation[]> { return api('/chat/conversations'); }
+export async function getChatUnread(): Promise<{ count: number }> { return api('/chat/unread'); }
+export async function markChatRead(conversationId: string, messageId: string): Promise<void> {
+  await api(`/chat/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST', body: JSON.stringify({ messageId }) });
+}
 export async function startChat(spaceId: string, peerId: string): Promise<{ id: string }> { return api('/chat/conversations', { method: 'POST', body: JSON.stringify({ spaceId, peerId }) }); }
 export async function getChatMessages(conversationId: string, cursor?: { before?: string; after?: string }): Promise<ChatMessagePage> {
   const query = cursor?.before ? `?before=${encodeURIComponent(cursor.before)}` : cursor?.after ? `?after=${encodeURIComponent(cursor.after)}` : '';

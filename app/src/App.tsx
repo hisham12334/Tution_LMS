@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { arrivingFromEmail, passwordResetToken, resetPasswordRequest, setPassword, signIn as apiSignIn, signOut } from './backend';
+import { arrivingFromEmail, chatEventSource, passwordResetToken, resetPasswordRequest, setPassword, signIn as apiSignIn, signOut } from './backend';
 import './features.css';
 import logoUrl from './astute-academy-logo.jpg';
 import { AdminAttendancePage, TeacherAttendancePage, WorkingHoursSetup } from './AttendancePage';
 import { ChatPage } from './ChatPage';
-import { assignStudentPackage, assignTeacher, confirmPackagePayment, createCohort, createCourse, createMaterial, createPackagePlan, deleteMaterial as deleteMaterialRequest, deletePaymentReceipt, deletePerson, deleteSpace, enrollStudent, getAdminDirectory, getClassSessions, getCompletions, getLessons, getPackagePayments, getPackagePlans, getPaymentReceiptUrl, getPersonDetail, getProfile, getSessionAttendance, getSpaceDetail, getSpaces, getStudentPackages, getStudents, getTeacherAttendance, getWorkingHours, inviteAccount, markComplete, offerCourse, openMaterial, saveSessionAttendance, submitClassLink, uploadPaymentReceipt } from './data';
+import { playChatSound, unlockChatSound } from './chatSound';
+import { assignStudentPackage, assignTeacher, confirmPackagePayment, createCohort, createCourse, createMaterial, createPackagePlan, deleteMaterial as deleteMaterialRequest, deletePaymentReceipt, deletePerson, deleteSpace, enrollStudent, getAdminDirectory, getChatUnread, getClassSessions, getCompletions, getLessons, getPackagePayments, getPackagePlans, getPaymentReceiptUrl, getPersonDetail, getProfile, getSessionAttendance, getSpaceDetail, getSpaces, getStudentPackages, getStudents, getTeacherAttendance, getWorkingHours, inviteAccount, markComplete, offerCourse, openMaterial, saveSessionAttendance, submitClassLink, uploadPaymentReceipt } from './data';
 import type { AdminDirectory, Attendance, ClassSession, Completion, CourseSpace, Lesson, PackagePayment, PackagePlan, PersonDetail, Profile, SpaceDetail, StudentPackage, TeacherAttendanceDay, WorkingHours } from './types';
 
 type Page = 'home' | 'setup' | 'classroom' | 'progress' | 'students' | 'upload' | 'schedule' | 'packages' | 'attendance' | 'chat';
@@ -29,6 +30,42 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [setupPassword, setSetupPassword] = useState(arrivingFromEmail);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const unreadRequest = useRef(0);
+  const lastSoundMessageId = useRef('');
+
+  const refreshUnread = useCallback(async () => {
+    const request = ++unreadRequest.current;
+    const summary = await getChatUnread();
+    if (request === unreadRequest.current) setUnreadCount(summary.count);
+  }, []);
+
+  useEffect(() => {
+    if (!profile) { unreadRequest.current++; setUnreadCount(0); lastSoundMessageId.current = ''; return; }
+    const source = chatEventSource();
+    const update = () => { void refreshUnread().catch(() => {}); };
+    source.onopen = update;
+    source.addEventListener('sync', update);
+    source.onmessage = event => {
+      try {
+        const message = JSON.parse(event.data) as { messageId?: string; senderId?: string };
+        if (message.messageId && message.senderId !== profile.id && message.messageId !== lastSoundMessageId.current) {
+          lastSoundMessageId.current = message.messageId;
+          playChatSound();
+        }
+      } catch { /* A sync event will refresh the badge. */ }
+      update();
+    };
+    window.addEventListener('pointerdown', unlockChatSound);
+    window.addEventListener('keydown', unlockChatSound);
+    update();
+    return () => {
+      source.close();
+      window.removeEventListener('pointerdown', unlockChatSound);
+      window.removeEventListener('keydown', unlockChatSound);
+      unreadRequest.current++;
+    };
+  }, [profile?.id, refreshUnread]);
 
   const signedIn = useCallback(async () => {
     setLoading(true);
@@ -156,14 +193,14 @@ export default function App() {
   }
 
   return <div className="shell">
-    <aside className="sidebar"><div className="brand sidebar-brand"><img className="brand-logo" src={logoUrl} alt="" /><span>ASTUTE ACADEMY</span></div><div className="cohort">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT PORTAL'}</div><nav className="nav">{nav.map(item => <button key={item.page} className={`nav-item ${page === item.page ? 'active' : ''}`} onClick={() => navigate(item.page)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>)}</nav><div className="sidebar-bottom"><div className="side-person">{profile.display_name}<small>{profile.role}</small></div><button className="nav-item" onClick={() => void signOut().then(() => { setProfile(null); setUserId(null); })}><span aria-hidden="true">↪</span>Log out</button></div></aside>
+    <aside className="sidebar"><div className="brand sidebar-brand"><img className="brand-logo" src={logoUrl} alt="" /><span>ASTUTE ACADEMY</span></div><div className="cohort">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT PORTAL'}</div><nav className="nav">{nav.map(item => <button key={item.page} className={`nav-item ${page === item.page ? 'active' : ''}`} onClick={() => navigate(item.page)}><span aria-hidden="true">{item.icon}</span>{item.label}{item.page === 'chat' && unreadCount > 0 && <b className="chat-nav-badge" aria-label={`${unreadCount} unread messages`}>{unreadCount > 99 ? '99+' : unreadCount}</b>}</button>)}</nav><div className="sidebar-bottom"><div className="side-person">{profile.display_name}<small>{profile.role}</small></div><button className="nav-item" onClick={() => void signOut().then(() => { setProfile(null); setUserId(null); })}><span aria-hidden="true">↪</span>Log out</button></div></aside>
     <main className="main"><header className={`topbar ${admin && page === "setup" ? "setup-topbar" : ""}`}><div className="mobile-brand brand"><img className="brand-logo" src={logoUrl} alt="" /><span>ASTUTE ACADEMY</span> <small>{profile.role}</small></div><label className="mobile-course-label" htmlFor="active-course">Course and class</label><div className="course-switcher"><select id="active-course" aria-label="Course and class" value={spaceId} onChange={e => setSpaceId(e.target.value)}>{spaces.length ? spaces.map(space => <option key={space.id} value={space.id}>{space.cohortName} · {space.courseTitle}</option>) : <option value="">No courses assigned</option>}</select></div><span className="role-pill">{profile.role}</span><div className="avatar">{initials(profile.display_name)}</div><strong>{profile.display_name}</strong><button className="mobile-logout" onClick={() => void signOut().then(() => { setProfile(null); setUserId(null); })}>Log out</button></header>
       <div className="content">{error && <div role="alert" className="alert">{error}</div>}{notice && <div role="status" className="notice">{notice}<button onClick={() => setNotice('')}>×</button></div>}
         {admin && page === 'home' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE OPERATIONS</p><AdminOverview directory={directory} spaces={spaces} onManage={() => setPage('setup')} onDeleted={refreshAdminDirectory} /></>}
         {admin && page === 'setup' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE SETUP</p><AdminSetup directory={directory} spaces={spaces} onSaved={refreshAdminDirectory} /></>}
         {admin && page === 'attendance' && <AdminAttendancePage directory={directory} />}
         {profile.role === 'teacher' && page === 'attendance' && <TeacherAttendancePage teacherId={profile.id} />}
-        {page === 'chat' && <ChatPage profile={profile} spaceId={spaceId} />}
+        {page === 'chat' && <ChatPage profile={profile} spaceId={spaceId} onRead={refreshUnread} />}
         {page !== 'attendance' && page !== 'chat' && (!admin || (page !== 'home' && page !== 'setup')) && (!activeSpace ? <Empty title="No course yet" text={profile.role === 'teacher' ? 'An admin needs to assign you to a class and course.' : 'Your tuition centre has not enrolled you in a course yet.'} /> : <>
         <p className="eyebrow">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT DASHBOARD'} <span></span> {activeSpace.cohortName.toUpperCase()} · {activeSpace.courseTitle.toUpperCase()}</p>
         {staff ? <>
@@ -181,7 +218,7 @@ export default function App() {
         </>}
       </>) }{loading && <p className="loading">Loading latest course data…</p>}</div>
     </main>
-    <nav className="mobile-nav" aria-label="Mobile navigation">{nav.map(item => <button key={item.page} className={`mobile-nav-item ${page === item.page ? 'active' : ''}`} aria-current={page === item.page ? 'page' : undefined} onClick={() => navigate(item.page)}><span aria-hidden="true">{item.icon}</span><small>{item.mobileLabel}</small></button>)}</nav>
+    <nav className="mobile-nav" aria-label="Mobile navigation">{nav.map(item => <button key={item.page} className={`mobile-nav-item ${page === item.page ? 'active' : ''}`} aria-current={page === item.page ? 'page' : undefined} onClick={() => navigate(item.page)}><span aria-hidden="true">{item.icon}</span><small>{item.mobileLabel}</small>{item.page === 'chat' && unreadCount > 0 && <b className="chat-mobile-badge" aria-label={`${unreadCount} unread messages`}>{unreadCount > 99 ? '99+' : unreadCount}</b>}</button>)}</nav>
   </div>;
 }
 

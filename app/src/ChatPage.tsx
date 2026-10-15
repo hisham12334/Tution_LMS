@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { chatEventSource } from './backend';
-import { getChatContacts, getChatConversations, getChatMessages, sendChatMessage, startChat } from './data';
+import { getChatContacts, getChatConversations, getChatMessages, markChatRead, sendChatMessage, startChat } from './data';
 import type { ChatContact, ChatConversation, ChatMessage, Profile } from './types';
 import './chat.css';
 
 const formatTime = (value: string) => new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(value));
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'Chat could not be updated.';
 
-export function ChatPage({ profile, spaceId }: { profile: Profile; spaceId: string }) {
+export function ChatPage({ profile, spaceId, onRead }: { profile: Profile; spaceId: string; onRead: () => Promise<void> }) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -22,6 +22,7 @@ export function ChatPage({ profile, spaceId }: { profile: Profile; spaceId: stri
   const selectedRef = useRef('');
   const messagesEnd = useRef<HTMLDivElement>(null);
   const preserveScroll = useRef(false);
+  const readPositions = useRef<Record<string, string>>({});
   selectedRef.current = selectedId;
 
   const refreshList = useCallback(async () => {
@@ -30,6 +31,18 @@ export function ChatPage({ profile, spaceId }: { profile: Profile; spaceId: stri
     setConversations(visible);
     setSelectedId(current => visible.some(item => item.id === current) ? current : visible[0]?.id || '');
   }, [profile.role, spaceId]);
+
+  const markRead = useCallback(async (conversationId: string, messageId: string) => {
+    if (!messageId || document.visibilityState !== 'visible' || readPositions.current[conversationId] === messageId) return;
+    readPositions.current[conversationId] = messageId;
+    try {
+      await markChatRead(conversationId, messageId);
+      await Promise.all([onRead(), refreshList()]);
+    } catch (failure) {
+      if (readPositions.current[conversationId] === messageId) delete readPositions.current[conversationId];
+      throw failure;
+    }
+  }, [onRead, refreshList]);
 
   useEffect(() => {
     setSelectedId(''); setMessages([]); setContacts([]); setError('');
@@ -69,7 +82,17 @@ export function ChatPage({ profile, spaceId }: { profile: Profile; spaceId: stri
       if (cursor && (!lastId.current || BigInt(cursor) > BigInt(lastId.current))) lastId.current = cursor;
       more = Boolean(page.hasMore && page.messages.length);
     }
-  }, []);
+    if (selectedRef.current === conversationId) await markRead(conversationId, lastId.current);
+  }, [markRead]);
+
+  useEffect(() => {
+    const whenVisible = () => {
+      if (document.visibilityState === 'visible' && selectedRef.current && lastId.current)
+        void markRead(selectedRef.current, lastId.current).catch(failure => setError(errorText(failure)));
+    };
+    document.addEventListener('visibilitychange', whenVisible);
+    return () => document.removeEventListener('visibilitychange', whenVisible);
+  }, [markRead]);
 
   useEffect(() => {
     lastId.current = ''; setMessages([]); setHasMore(false);
@@ -157,7 +180,7 @@ export function ChatPage({ profile, spaceId }: { profile: Profile; spaceId: stri
         {profile.role === 'admin' && <label className="chat-search">Search conversations<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Name, class, or course" /></label>}
         <div className="chat-list-heading">{profile.role === 'admin' ? 'All conversations' : 'Your conversations'} <span>{filtered.length}</span></div>
         {filtered.map(item => <button key={item.id} type="button" className={`chat-conversation ${selectedId === item.id ? 'selected' : ''}`} onClick={() => setSelectedId(item.id)}>
-          <strong>{profile.role === 'admin' ? `${item.studentName} · ${item.teacherName}` : profile.role === 'student' ? item.teacherName : item.studentName}</strong>
+          <strong>{profile.role === 'admin' ? `${item.studentName} · ${item.teacherName}` : profile.role === 'student' ? item.teacherName : item.studentName}{item.unreadCount > 0 && <b className="chat-conversation-badge" aria-label={`${item.unreadCount} unread messages`}>{item.unreadCount > 99 ? '99+' : item.unreadCount}</b>}</strong>
           <small>{item.cohortName} · {item.courseTitle}</small>
           <span>{item.lastMessage || 'No messages yet'}</span>
           {item.lastAt && <time>{formatTime(item.lastAt)}</time>}

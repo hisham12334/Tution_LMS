@@ -9,6 +9,12 @@
 .chat-conversation:hover,.chat-conversation.selected{background:#e3edfb}
 .chat-conversation.selected{box-shadow:inset 4px 0 #f7941d}
 .chat-conversation strong{font-size:12px}
+.chat-conversation strong{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.chat-nav-badge,.chat-mobile-badge,.chat-conversation-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:12px;background:#cf3f33;color:#fff;font:800 10px Manrope;line-height:1;white-space:nowrap}
+.chat-nav-badge{margin-left:auto}
+.chat-mobile-badge{position:absolute;top:1px;right:5px;min-width:18px;height:18px;font-size:9px}
+.mobile-nav-item:has(.chat-mobile-badge){position:relative}
+.chat-conversation-badge{flex:none}
 .chat-conversation small,.chat-conversation time{font-size:10px;color:#52636a}
 .chat-conversation span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#52636a}
 .chat-conversation time{font:600 9px 'DM Mono'}

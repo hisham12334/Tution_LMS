@@ -5,7 +5,7 @@ export type ChatContact = { id: string; display_name: string };
 export type ChatConversation = {
   id: string; spaceId: string; studentId: string; teacherId: string;
   studentName: string; teacherName: string; courseTitle: string; cohortName: string;
-  lastMessage: string | null; lastAt: string | null;
+  lastMessage: string | null; lastAt: string | null; unreadCount: number;
 };
 export type ChatMessage = { id: string; senderId: string; senderName: string; body: string; createdAt: string };
 export type ChatMessagePage = { messages: ChatMessage[]; hasMore: boolean };
