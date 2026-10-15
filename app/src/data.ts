@@ -1,9 +1,13 @@
 import { api } from './backend';
-import type { AdminDirectory, Attendance, ClassSession, Completion, CourseSpace, Lesson, PackagePayment, PackagePlan, Profile, Role, StudentPackage } from './types';
+import type { AdminDirectory, Attendance, ClassSession, Completion, CourseSpace, Lesson, PackagePayment, PackagePlan, PersonDetail, Profile, Role, SpaceDetail, StudentPackage } from './types';
 
 export async function getProfile(_id?: string): Promise<Profile> { return api('/me'); }
 export async function getSpaces(_role?: Role, _userId?: string): Promise<CourseSpace[]> { return api('/spaces'); }
 export async function getAdminDirectory(): Promise<AdminDirectory> { return api('/admin/directory'); }
+export async function getPersonDetail(id: string): Promise<PersonDetail> { return api(`/admin/people/${encodeURIComponent(id)}`); }
+export async function getSpaceDetail(id: string): Promise<SpaceDetail> { return api(`/admin/spaces/${encodeURIComponent(id)}`); }
+export async function deletePerson(id: string): Promise<void> { await api(`/admin/people/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+export async function deleteSpace(id: string): Promise<void> { await api(`/admin/spaces/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
 export async function inviteAccount(input: { displayName: string; email: string; role: 'student' | 'teacher' }): Promise<{ message: string; setupUrl?: string; emailSent?: boolean }> {
   return api('/admin/invitations', { method: 'POST', body: JSON.stringify(input) });
 }

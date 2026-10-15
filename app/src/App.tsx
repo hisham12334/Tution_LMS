@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { arrivingFromEmail, passwordResetToken, resetPasswordRequest, setPassword, signIn as apiSignIn, signOut } from './backend';
 import './features.css';
 import logoUrl from './astute-academy-logo.jpg';
-import { assignStudentPackage, assignTeacher, confirmPackagePayment, createClassSession, createCohort, createCourse, createMaterial, createPackagePlan, deleteMaterial as deleteMaterialRequest, deletePaymentReceipt, enrollStudent, getAdminDirectory, getClassSessions, getCompletions, getLessons, getPackagePayments, getPackagePlans, getPaymentReceiptUrl, getProfile, getSessionAttendance, getSpaces, getStudentPackages, getStudents, inviteAccount, markComplete, offerCourse, openMaterial, saveSessionAttendance, uploadPaymentReceipt } from './data';
-import type { AdminDirectory, Attendance, ClassSession, Completion, CourseSpace, Lesson, PackagePayment, PackagePlan, Profile, StudentPackage } from './types';
+import { assignStudentPackage, assignTeacher, confirmPackagePayment, createClassSession, createCohort, createCourse, createMaterial, createPackagePlan, deleteMaterial as deleteMaterialRequest, deletePaymentReceipt, deletePerson, deleteSpace, enrollStudent, getAdminDirectory, getClassSessions, getCompletions, getLessons, getPackagePayments, getPackagePlans, getPaymentReceiptUrl, getPersonDetail, getProfile, getSessionAttendance, getSpaceDetail, getSpaces, getStudentPackages, getStudents, inviteAccount, markComplete, offerCourse, openMaterial, saveSessionAttendance, uploadPaymentReceipt } from './data';
+import type { AdminDirectory, Attendance, ClassSession, Completion, CourseSpace, Lesson, PackagePayment, PackagePlan, PersonDetail, Profile, SpaceDetail, StudentPackage } from './types';
 
 type Page = 'home' | 'setup' | 'classroom' | 'progress' | 'students' | 'upload' | 'schedule' | 'packages';
 const message = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
@@ -156,7 +156,7 @@ export default function App() {
     <aside className="sidebar"><div className="brand sidebar-brand"><img className="brand-logo" src={logoUrl} alt="" /><span>ASTUTE ACADEMY</span></div><div className="cohort">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT PORTAL'}</div><nav className="nav">{nav.map(item => <button key={item.page} className={`nav-item ${page === item.page ? 'active' : ''}`} onClick={() => navigate(item.page)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>)}</nav><div className="sidebar-bottom"><div className="side-person">{profile.display_name}<small>{profile.role}</small></div><button className="nav-item" onClick={() => void signOut().then(() => { setProfile(null); setUserId(null); })}><span aria-hidden="true">↪</span>Log out</button></div></aside>
     <main className="main"><header className="topbar"><div className="mobile-brand brand"><img className="brand-logo" src={logoUrl} alt="" /><span>ASTUTE ACADEMY</span> <small>{profile.role}</small></div><label className="mobile-course-label" htmlFor="active-course">Course and cohort</label><div className="course-switcher"><select id="active-course" aria-label="Course and cohort" value={spaceId} onChange={e => setSpaceId(e.target.value)}>{spaces.length ? spaces.map(space => <option key={space.id} value={space.id}>{space.cohortName} · {space.courseTitle}</option>) : <option value="">No courses assigned</option>}</select></div><span className="role-pill">{profile.role}</span><div className="avatar">{initials(profile.display_name)}</div><strong>{profile.display_name}</strong><button className="mobile-logout" onClick={() => void signOut().then(() => { setProfile(null); setUserId(null); })}>Log out</button></header>
       <div className="content">{error && <div role="alert" className="alert">{error}</div>}{notice && <div role="status" className="notice">{notice}<button onClick={() => setNotice('')}>×</button></div>}
-        {admin && page === 'home' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE OPERATIONS</p><AdminOverview directory={directory} spaces={spaces} onManage={() => setPage('setup')} /></>}
+        {admin && page === 'home' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE OPERATIONS</p><AdminOverview directory={directory} spaces={spaces} onManage={() => setPage('setup')} onDeleted={refreshAdminDirectory} /></>}
         {admin && page === 'setup' && <><p className="eyebrow">ADMIN CONSOLE <span></span> CENTRE SETUP</p><AdminSetup directory={directory} spaces={spaces} onSaved={refreshAdminDirectory} /></>}
         {(!admin || (page !== 'home' && page !== 'setup')) && (!activeSpace ? <Empty title="No course yet" text={profile.role === 'teacher' ? 'An admin needs to assign you to a cohort and course.' : 'Your tuition centre has not enrolled you in a course yet.'} /> : <>
         <p className="eyebrow">{admin ? 'ADMIN CONSOLE' : staff ? 'TEACHER WORKSPACE' : 'STUDENT DASHBOARD'} <span></span> {activeSpace.cohortName.toUpperCase()} · {activeSpace.courseTitle.toUpperCase()}</p>
@@ -179,13 +179,67 @@ export default function App() {
   </div>;
 }
 
-function AdminOverview({ directory, spaces, onManage }: { directory: AdminDirectory; spaces: CourseSpace[]; onManage: () => void }) {
-  const students = directory.profiles.filter(person => person.role === 'student').length;
-  const teachers = directory.profiles.filter(person => person.role === 'teacher').length;
+type OverviewKind = 'students' | 'teachers' | 'spaces';
+function AdminOverview({ directory, spaces, onManage, onDeleted }: { directory: AdminDirectory; spaces: CourseSpace[]; onManage: () => void; onDeleted: (message?: string) => Promise<void> }) {
+  const [kind, setKind] = useState<OverviewKind>('spaces');
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<PersonDetail | SpaceDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+  const detailRequest = useRef(0);
+  const people = directory.profiles.filter(person => person.role === (kind === 'students' ? 'student' : 'teacher'));
+  const rows = kind === 'spaces' ? spaces.map(space => ({ id: space.id, name: space.cohortName, subtitle: space.courseTitle }))
+    : people.map(person => ({ id: person.id, name: person.display_name, subtitle: person.role === 'student' ? 'Student account' : 'Teacher account' }));
+  const metrics: Array<{ kind: OverviewKind; label: string; count: number; description: string }> = [
+    { kind: 'students', label: 'STUDENTS', count: directory.profiles.filter(p => p.role === 'student').length, description: 'Accounts in the centre' },
+    { kind: 'teachers', label: 'TEACHERS', count: directory.profiles.filter(p => p.role === 'teacher').length, description: 'Teaching staff' },
+    { kind: 'spaces', label: 'LEARNING SPACES', count: spaces.length, description: 'Cohort and course pairings' },
+  ];
+  async function open(kindToOpen: OverviewKind, id: string) {
+    const request = ++detailRequest.current;
+    setKind(kindToOpen); setSelected(id); setDetail(null); setError(''); setLoadingDetail(true);
+    try {
+      const found = kindToOpen === 'spaces' ? await getSpaceDetail(id) : await getPersonDetail(id);
+      if (request === detailRequest.current) {
+        setDetail(found);
+        if (window.matchMedia('(max-width: 760px)').matches) requestAnimationFrame(() => document.querySelector('.admin-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      }
+    } catch (failure) { if (request === detailRequest.current) setError(message(failure)); }
+    finally { if (request === detailRequest.current) setLoadingDetail(false); }
+  }
+  async function remove() {
+    if (!detail || !selected) return;
+    const label = kind === 'spaces' ? `${(detail as SpaceDetail).cohortName} · ${(detail as SpaceDetail).courseTitle}` : (detail as PersonDetail).display_name;
+    const typed = window.prompt(`Permanently delete ${label}? This also removes its related records and cannot be undone. Type DELETE to confirm.`);
+    if (typed !== 'DELETE') return;
+    setDeleting(true); setError('');
+    try {
+      if (kind === 'spaces') await deleteSpace(selected); else await deletePerson(selected);
+      ++detailRequest.current; setSelected(null); setDetail(null);
+      await onDeleted(`${label} was permanently deleted.`);
+    } catch (failure) { setError(message(failure)); }
+    finally { setDeleting(false); }
+  }
+  const person = kind !== 'spaces' ? detail as PersonDetail | null : null;
+  const space = kind === 'spaces' ? detail as SpaceDetail | null : null;
   return <>
     <div className="page-title title-action"><div><h1>CENTRE<br /><em>OVERVIEW.</em></h1><p>Manage learning spaces, people, and teaching assignments across the centre.</p></div><button className="primary" onClick={onManage}>Manage centre →</button></div>
-    <div className="metrics"><article><span>STUDENTS</span><b>{students}</b><p>Accounts in the centre</p></article><article><span>TEACHERS</span><b>{teachers}</b><p>Teaching staff</p></article><article><span>LEARNING SPACES</span><b>{spaces.length}</b><p>Cohort and course pairings</p></article></div>
-    <section className="panel roster"><div className="section-head"><h2>Learning spaces</h2><span>{directory.cohorts.length} cohorts · {directory.courses.length} courses</span></div>{spaces.length ? spaces.map(space => <div className="student-row" key={space.id}><div className="student-avatar">{initials(space.cohortName)}</div><div className="student-name"><strong>{space.cohortName}</strong><small>{space.courseTitle}</small></div><span className="type-tag">ACTIVE SPACE</span></div>) : <p className="muted-text">No cohort and course pairings yet. Add them in Manage centre.</p>}</section>
+    <div className="metrics admin-metrics">{metrics.map(metric => <button key={metric.kind} type="button" className={`admin-metric ${kind === metric.kind ? 'selected' : ''}`} aria-pressed={kind === metric.kind} onClick={() => { ++detailRequest.current; setKind(metric.kind); setSelected(null); setDetail(null); setLoadingDetail(false); setError(''); }}><span>{metric.label}</span><b>{metric.count}</b><p>{metric.description}</p><small>View all →</small></button>)}</div>
+    <div className="admin-directory-grid">
+      <section className="panel roster admin-directory" aria-label={`${kind} list`}><div className="section-head"><h2>{kind === 'spaces' ? 'Learning spaces' : kind === 'students' ? 'Students' : 'Teachers'}</h2><span>{rows.length} total</span></div>
+        {rows.length ? rows.map(row => <button type="button" className={`student-row admin-directory-row ${selected === row.id ? 'selected' : ''}`} key={row.id} onClick={() => void open(kind, row.id)}><span className="student-avatar">{initials(row.name)}</span><span className="student-name"><strong>{row.name}</strong><small>{row.subtitle}</small></span><span aria-hidden="true">›</span></button>) : <p className="muted-text">No {kind === 'spaces' ? 'learning spaces' : kind} yet. Add them in Manage centre.</p>}
+      </section>
+      <section className="panel admin-detail" aria-label="Selected record details"><div className="section-head"><h2>Details</h2></div>
+        {error && <p role="alert" className="alert">{error}</p>}
+        {loadingDetail && <p className="muted-text">Loading details…</p>}
+        {!selected && !loadingDetail && <p className="muted-text">Select a {kind === 'spaces' ? 'learning space' : kind === 'students' ? 'student' : 'teacher'} to view details and deletion options.</p>}
+        {person && <><h3>{person.display_name}</h3><p><strong>Email:</strong> {person.email}</p><p><strong>Role:</strong> {person.role}</p><p><strong>Created:</strong> {date(person.created_at)}</p><h4>Learning spaces ({person.spaces.length})</h4>{person.spaces.length ? <ul>{person.spaces.map(item => <li key={item.id}>{item.cohortName} · {item.courseTitle}</li>)}</ul> : <p>None assigned</p>}
+          <h4>Records affected by deletion</h4><div className="admin-impact">{Object.entries(person.impact).map(([label, count]) => <span key={label}>{label.replaceAll('_', ' ')}: <strong>{count}</strong></span>)}</div><p className="admin-delete-note">The account and its own enrollment, progress, attendance, and package records are removed. Content authored by a teacher remains available.</p></>}
+        {space && <><h3>{space.cohortName} · {space.courseTitle}</h3><div className="admin-impact">{(['students','teachers','lessons','sessions','packages','payments'] as const).map(label => <span key={label}>{label}: <strong>{space[label]}</strong></span>)}</div><h4>Teachers</h4>{space.teachersList.length ? <ul>{space.teachersList.map(item => <li key={item.id}><button className="link" onClick={() => void open('teachers', item.id)}>{item.display_name}</button></li>)}</ul> : <p>None assigned</p>}<h4>Students in this cohort</h4>{space.studentsList.length ? <ul>{space.studentsList.map(item => <li key={item.id}><button className="link" onClick={() => void open('students', item.id)}>{item.display_name}</button></li>)}</ul> : <p>None enrolled</p>}<p className="admin-delete-note">Deleting this space removes its materials, classes, attendance, packages, and payments. Student and teacher accounts stay available. Other spaces in this cohort remain available.</p></>}
+        {detail && <button type="button" className="outline delete-material admin-delete" disabled={deleting} onClick={() => void remove()}>{deleting ? 'Deleting…' : `Permanently delete ${kind === 'spaces' ? 'space' : 'account'}`}</button>}
+      </section>
+    </div>
   </>;
 }
 

@@ -110,6 +110,90 @@ app.get('/api/admin/directory', session, allow('admin'), async (_req, res, next)
     res.json({ profiles: profiles.rows, cohorts: cohorts.rows, courses: courses.rows });
   } catch (error) { next(error); }
 });
+app.get('/api/admin/people/:personId', session, allow('admin'), async (req, res, next) => {
+  try {
+    const person = await query(`select p.id,p.display_name,p.role,u.email,u."createdAt" created_at
+      from profiles p join "user" u on u.id=p.id where p.id=$1 and p.role in ('student','teacher')`, [req.params.personId]);
+    if (!person.rowCount) return res.status(404).json({ error: 'Student or teacher not found.' });
+    const role = person.rows[0].role;
+    const spaces = role === 'student'
+      ? await query(`select cc.id,c.name cohort_name,co.title course_title from cohort_members cm
+          join cohorts c on c.id=cm.cohort_id join cohort_courses cc on cc.cohort_id=c.id
+          join courses co on co.id=cc.course_id where cm.student_id=$1 order by c.name,co.title`, [req.params.personId])
+      : await query(`select cc.id,c.name cohort_name,co.title course_title from teacher_assignments ta
+          join cohort_courses cc on cc.id=ta.cohort_course_id join cohorts c on c.id=cc.cohort_id
+          join courses co on co.id=cc.course_id where ta.teacher_id=$1 order by c.name,co.title`, [req.params.personId]);
+    const impact = role === 'student'
+      ? await query(`select (select count(*)::int from lesson_progress where student_id=$1) progress,
+          (select count(*)::int from attendance where student_id=$1) attendance,
+          (select count(*)::int from student_packages where student_id=$1) packages,
+          (select count(*)::int from package_payments pp join student_packages sp on sp.id=pp.student_package_id where sp.student_id=$1) payments`, [req.params.personId])
+      : await query(`select (select count(*)::int from lessons where created_by=$1) authored_lessons,
+          (select count(*)::int from class_sessions where created_by=$1) authored_sessions`, [req.params.personId]);
+    res.json({ ...person.rows[0], spaces: spaces.rows.map(row => ({ id: row.id, cohortName: row.cohort_name, courseTitle: row.course_title })), impact: impact.rows[0] });
+  } catch (error) { next(error); }
+});
+app.delete('/api/admin/people/:personId', session, allow('admin'), async (req: RequestWithUser, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const person = await client.query<{ role: Role }>(`select role from profiles where id=$1 for update`, [req.params.personId]);
+    if (!person.rowCount) { await client.query('rollback'); return res.status(404).json({ error: 'Account not found.' }); }
+    if (person.rows[0].role === 'admin' || req.params.personId === req.user!.id) {
+      await client.query('rollback'); return res.status(403).json({ error: 'Admin accounts cannot be deleted here.' });
+    }
+    if (person.rows[0].role === 'student') {
+      await client.query(`insert into deleted_file_cleanup(object_key)
+        select distinct pp.receipt_key from package_payments pp join student_packages sp on sp.id=pp.student_package_id
+        where sp.student_id=$1 and pp.receipt_key is not null on conflict (object_key) do nothing`, [req.params.personId]);
+    }
+    await client.query('delete from "user" where id=$1', [req.params.personId]);
+    await client.query('commit');
+    void runDeletedFileCleanup();
+    res.sendStatus(204);
+  } catch (error) { await client.query('rollback').catch(() => undefined); next(error); }
+  finally { client.release(); }
+});
+app.get('/api/admin/spaces/:spaceId', session, allow('admin'), async (req, res, next) => {
+  try {
+    const space = await query(`select cc.id,c.name cohort_name,co.title course_title,
+      (select count(*)::int from cohort_members cm where cm.cohort_id=cc.cohort_id) students,
+      (select count(*)::int from teacher_assignments ta where ta.cohort_course_id=cc.id) teachers,
+      (select count(*)::int from lessons l where l.cohort_course_id=cc.id) lessons,
+      (select count(*)::int from class_sessions cs where cs.cohort_course_id=cc.id) sessions,
+      (select count(*)::int from student_packages sp where sp.cohort_course_id=cc.id) packages,
+      (select count(*)::int from package_payments pp join student_packages sp on sp.id=pp.student_package_id where sp.cohort_course_id=cc.id) payments
+      from cohort_courses cc join cohorts c on c.id=cc.cohort_id join courses co on co.id=cc.course_id where cc.id=$1`, [req.params.spaceId]);
+    if (!space.rowCount) return res.status(404).json({ error: 'Learning space not found.' });
+    const [students, teachers] = await Promise.all([
+      query(`select p.id,p.display_name from cohort_members cm join profiles p on p.id=cm.student_id
+        where cm.cohort_id=(select cohort_id from cohort_courses where id=$1) order by p.display_name`, [req.params.spaceId]),
+      query(`select p.id,p.display_name from teacher_assignments ta join profiles p on p.id=ta.teacher_id
+        where ta.cohort_course_id=$1 order by p.display_name`, [req.params.spaceId]),
+    ]);
+    res.json({ ...space.rows[0], cohortName: space.rows[0].cohort_name, courseTitle: space.rows[0].course_title, studentsList: students.rows, teachersList: teachers.rows });
+  } catch (error) { next(error); }
+});
+app.delete('/api/admin/spaces/:spaceId', session, allow('admin'), async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const space = await client.query('select id from cohort_courses where id=$1 for update', [req.params.spaceId]);
+    if (!space.rowCount) { await client.query('rollback'); return res.status(404).json({ error: 'Learning space not found.' }); }
+    await client.query(`insert into deleted_file_cleanup(object_key,multipart_upload_id)
+      select distinct coalesce(l.storage_key,fu.object_key),fu.multipart_upload_id from lessons l
+      left join file_uploads fu on fu.lesson_id=l.id where l.cohort_course_id=$1 and coalesce(l.storage_key,fu.object_key) is not null
+      on conflict (object_key) do nothing`, [req.params.spaceId]);
+    await client.query(`insert into deleted_file_cleanup(object_key)
+      select distinct pp.receipt_key from package_payments pp join student_packages sp on sp.id=pp.student_package_id
+      where sp.cohort_course_id=$1 and pp.receipt_key is not null on conflict (object_key) do nothing`, [req.params.spaceId]);
+    await client.query('delete from cohort_courses where id=$1', [req.params.spaceId]);
+    await client.query('commit');
+    void runDeletedFileCleanup();
+    res.sendStatus(204);
+  } catch (error) { await client.query('rollback').catch(() => undefined); next(error); }
+  finally { client.release(); }
+});
 app.post('/api/admin/cohorts', session, allow('admin'), async (req, res, next) => {
   try { const result = await query('insert into cohorts(name) values($1) returning id', [String(req.body.name || '').trim()]); res.status(201).json(result.rows[0]); }
   catch (error) { next(error); }
@@ -535,6 +619,23 @@ app.use((_error: unknown, _req: express.Request, res: express.Response, _next: e
 
 const port = Number(process.env.PORT || 3001);
 const server = app.listen(port, () => console.info(`Astute API listening on ${port}`));
+let deletedFileCleanupRunning = false;
+const runDeletedFileCleanup = async () => {
+  if (deletedFileCleanupRunning) return;
+  deletedFileCleanupRunning = true;
+  try {
+    const pending = await query<{ object_key: string; multipart_upload_id: string | null }>(
+      'select object_key,multipart_upload_id from deleted_file_cleanup order by created_at limit 50');
+    for (const file of pending.rows) {
+      try {
+        if (file.multipart_upload_id) await cancelMultipart(file.object_key, file.multipart_upload_id).catch(error => console.warn('Multipart cancellation failed; checking object deletion.', file.object_key, error));
+        await deleteObject(file.object_key);
+        await query('delete from deleted_file_cleanup where object_key=$1', [file.object_key]);
+      } catch (error) { console.error('Deleted file cleanup will retry.', file.object_key, error); }
+    }
+  } catch (error) { console.error('Deleted file cleanup query failed; it will be retried.', error); }
+  finally { deletedFileCleanupRunning = false; }
+};
 let retentionCleanupRunning = false;
 const runRetentionCleanup = async () => {
   if (retentionCleanupRunning) return;
@@ -545,9 +646,10 @@ const runRetentionCleanup = async () => {
   } catch (error) { console.error('Material retention cleanup failed; it will be retried.', error); }
   finally { retentionCleanupRunning = false; }
 };
-const retentionTimer = setInterval(() => void runRetentionCleanup(), 60 * 60 * 1000);
+const retentionTimer = setInterval(() => { void runRetentionCleanup(); void runDeletedFileCleanup(); }, 60 * 60 * 1000);
 retentionTimer.unref();
 void runRetentionCleanup();
+void runDeletedFileCleanup();
 const shutdown = () => { clearInterval(retentionTimer); server.close(() => void pool.end()); };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

@@ -6,6 +6,12 @@ export type AdminDirectory = {
   cohorts: Array<{ id: string; name: string }>;
   courses: Array<{ id: string; title: string }>;
 };
+export type PersonDetail = Profile & { email: string; created_at: string; spaces: CourseSpace[]; impact: Record<string, number> };
+export type SpaceDetail = CourseSpace & {
+  students: number; teachers: number; lessons: number; sessions: number; packages: number; payments: number;
+  studentsList: Array<{ id: string; display_name: string }>;
+  teachersList: Array<{ id: string; display_name: string }>;
+};
 export type Lesson = {
   id: string;
   cohort_course_id: string;
