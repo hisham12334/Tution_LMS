@@ -1,4 +1,5 @@
 const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+export const chatEventSource = () => new EventSource(`${apiBase}/api/chat/events`, { withCredentials: true });
 export const arrivingFromEmail = new URLSearchParams(window.location.search).has('token')
   || new URLSearchParams(window.location.search).get('setup') === 'invite';
 export const passwordResetToken = new URLSearchParams(window.location.search).get('token');

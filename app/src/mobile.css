@@ -14,6 +14,7 @@
 
 .course-switcher select { width: 100%; }
 .password-help { justify-self: start; min-height: 44px; padding: 0 5px; }
+.setup-shortcuts { display: none; }
 
 @media (max-width: 900px) {
   .sidebar { display: none; }
@@ -54,6 +55,8 @@
     min-width: 0;
     position: relative;
   }
+  .setup-topbar .mobile-course-label,
+  .setup-topbar .course-switcher { display: none; }
   .course-switcher::after {
     content: '';
     position: absolute;
@@ -110,18 +113,25 @@
     inset: auto 0 0;
     z-index: 30;
     display: flex;
-    justify-content: space-around;
+    justify-content: flex-start;
+    gap: 3px;
     min-height: 64px;
-    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+    padding: 4px max(8px, env(safe-area-inset-left)) calc(4px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
     border-top: 1px solid #d8e3d9;
     background: #fff;
     box-shadow: 0 -4px 18px #16314212;
   }
+  .mobile-nav::-webkit-scrollbar { display: none; }
   .mobile-nav-item {
     display: flex;
-    flex: 1;
-    min-width: 0;
+    flex: 0 0 77px;
+    min-width: 77px;
     min-height: 54px;
+    scroll-snap-align: center;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -153,6 +163,28 @@
   .admin-form,
   .upload-form,
   .panel { min-width: 0; }
+  .setup-shortcuts {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    margin: -6px -20px 18px;
+    padding: 6px 20px 10px;
+    scrollbar-width: none;
+  }
+  .setup-shortcuts::-webkit-scrollbar { display: none; }
+  .setup-shortcuts button {
+    flex: none;
+    min-height: 42px;
+    padding: 0 14px;
+    border: 1px solid #c5d4c8;
+    border-radius: 999px;
+    background: #fff;
+    color: #163142;
+    font: 800 11px Manrope;
+  }
+  .setup-shortcuts button:focus-visible { outline: 3px solid #163142; outline-offset: 2px; }
+  .admin-setup-grid > .admin-form { scroll-margin-top: 78px; }
+  .admin-setup-grid .invite-link { display: block; overflow-wrap: anywhere; }
   .student-name,
   .row-main { min-width: 0; overflow-wrap: anywhere; }
   .student-avatar { flex: none; }
@@ -183,6 +215,11 @@
 @media (max-width: 640px) {
   .topbar { padding: 9px 15px 11px; }
   .content { padding: 19px 15px calc(108px + env(safe-area-inset-bottom)); }
+  .setup-shortcuts { margin-right: -15px; margin-left: -15px; padding-right: 15px; padding-left: 15px; }
+  .admin-setup-grid { gap: 12px; }
+  .admin-setup-grid > .admin-form { padding: 18px; gap: 12px; }
+  .admin-setup-grid .admin-form p { line-height: 1.5; }
+  .admin-setup-grid .attendance-time-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .mobile-brand { font-size: 15px; }
   .mobile-brand small { font-size: 8px; }
   .hero h1,
@@ -218,8 +255,52 @@
 
 @media (max-width: 380px) {
   .mobile-brand small { display: none; }
-  .mobile-nav { justify-content: flex-start; overflow-x: auto; padding-right: 3px; padding-left: 3px; }
-  .mobile-nav-item { flex: 0 0 68px; font-size: 9px; }
+  .mobile-nav-item { flex-basis: 72px; min-width: 72px; font-size: 9px; }
   .lesson-row { grid-template-columns: 23px minmax(0, 1fr); gap: 8px; }
   .status-tag { display: inline-block; margin: 5px 0 0; }
+}
+
+@media (max-width: 760px) {
+  .attendance-calendar { overflow-x: hidden; }
+  .attendance-calendar .calendar-weekdays,
+  .attendance-calendar .calendar-grid { min-width: 0; width: 100%; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  .attendance-calendar .calendar-weekdays span { padding: 5px 0; font-size: 9px; }
+  .attendance-calendar .calendar-cell { min-height: 0; padding: 0; border: 0; background: transparent; }
+  .calendar-desktop-day { display: none; }
+  .calendar-mobile-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-height: 60px;
+    padding: 7px 2px 5px;
+    border: 1px solid #d4d8e8;
+    border-radius: 7px;
+    background: #fff;
+    color: #163142;
+  }
+  .calendar-mobile-day.selected { border: 2px solid #163142; background: #e3edfb; padding-top: 6px; }
+  .calendar-mobile-day:focus-visible { outline: 3px solid #163142; outline-offset: 1px; }
+  .calendar-mobile-day strong { font: 800 11px 'DM Mono'; }
+  .calendar-mobile-dots { display: flex; flex-wrap: wrap; justify-content: center; align-content: start; gap: 2px; width: 100%; }
+  .calendar-mobile-dots .attendance-hour-dot { width: 7px; height: 7px; flex-basis: 7px; }
+  .calendar-mobile-detail { display: block; margin-top: 14px; padding: 15px; border: 1px solid #d4d8e8; border-radius: 9px; background: #f8fafc; }
+  .calendar-mobile-detail h3 { margin: 0 0 6px; font: 700 17px 'Space Grotesk'; }
+  .calendar-mobile-detail>p { margin: 0 0 10px; line-height: 1.5; }
+  .calendar-mobile-class { display: grid; gap: 5px; padding: 11px 0; border-top: 1px solid #d4d8e8; }
+  .calendar-mobile-class>strong { font-size: 12px; overflow-wrap: anywhere; }
+  .calendar-mobile-class .calendar-class-more { margin-top: 2px; padding-top: 6px; }
+  .calendar-mobile-class .calendar-class-more button { min-height: 40px; font-size: 10px; }
+  .student-attendance-row { flex-wrap: wrap; }
+  .student-attendance-row .status-tag { margin: 0; }
+}
+
+@media (max-width: 380px) {
+  .attendance-detail,
+  .teacher-attendance-page { margin-right: -15px; margin-left: -15px; padding: 10px; border-radius: 0; }
+  .attendance-calendar .calendar-weekdays,
+  .attendance-calendar .calendar-grid { gap: 2px; }
+  .calendar-mobile-day { min-height: 58px; }
+  .calendar-mobile-dots .attendance-hour-dot { width: 6px; height: 6px; flex-basis: 6px; }
 }

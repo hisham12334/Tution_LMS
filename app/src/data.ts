@@ -1,5 +1,16 @@
 import { api } from './backend';
-import type { AdminDirectory, Attendance, ClassSession, Completion, CourseSpace, Lesson, PackagePayment, PackagePlan, PersonDetail, Profile, Role, SpaceDetail, StudentPackage } from './types';
+import type { AdminDirectory, Attendance, ChatContact, ChatConversation, ChatMessagePage, ClassSession, Completion, CourseSpace, Lesson, PackagePayment, PackagePlan, PersonDetail, Profile, Role, SpaceDetail, StudentAttendanceReport, StudentPackage, TeacherAttendanceDay, WorkingHours } from './types';
+
+export async function getChatContacts(spaceId: string): Promise<ChatContact[]> { return api(`/chat/contacts?spaceId=${encodeURIComponent(spaceId)}`); }
+export async function getChatConversations(): Promise<ChatConversation[]> { return api('/chat/conversations'); }
+export async function startChat(spaceId: string, peerId: string): Promise<{ id: string }> { return api('/chat/conversations', { method: 'POST', body: JSON.stringify({ spaceId, peerId }) }); }
+export async function getChatMessages(conversationId: string, cursor?: { before?: string; after?: string }): Promise<ChatMessagePage> {
+  const query = cursor?.before ? `?before=${encodeURIComponent(cursor.before)}` : cursor?.after ? `?after=${encodeURIComponent(cursor.after)}` : '';
+  return api(`/chat/conversations/${encodeURIComponent(conversationId)}/messages${query}`);
+}
+export async function sendChatMessage(conversationId: string, body: string): Promise<void> {
+  await api(`/chat/conversations/${encodeURIComponent(conversationId)}/messages`, { method: 'POST', body: JSON.stringify({ body }) });
+}
 
 export async function getProfile(_id?: string): Promise<Profile> { return api('/me'); }
 export async function getSpaces(_role?: Role, _userId?: string): Promise<CourseSpace[]> { return api('/spaces'); }
@@ -27,9 +38,12 @@ export async function markComplete(_studentId: string, lessonId: string): Promis
 export async function deleteMaterial(lessonId: string): Promise<void> { await api(`/lessons/${lessonId}`, { method: 'DELETE' }); }
 export async function getClassSessions(spaceId: string): Promise<ClassSession[]> { return api(`/spaces/${spaceId}/sessions`); }
 export async function getSpaceAttendance(spaceId: string): Promise<Attendance[]> { return api(`/spaces/${spaceId}/attendance`); }
-export async function createClassSession(input: { spaceId: string; teacherId: string; title: string; startsAt: string; endsAt: string; meetingUrl: string }): Promise<void> {
-  await api(`/spaces/${input.spaceId}/sessions`, { method: 'POST', body: JSON.stringify({ title: input.title.trim(), startsAt: input.startsAt, endsAt: input.endsAt, meetingUrl: input.meetingUrl.trim() }) });
-}
+export async function getWorkingHours(spaceId: string): Promise<WorkingHours | null> { return api(`/spaces/${spaceId}/working-hours`); }
+export async function saveWorkingHours(spaceId: string, startsAt: string, endsAt: string): Promise<void> { await api(`/admin/spaces/${spaceId}/working-hours`, { method: 'PUT', body: JSON.stringify({ startsAt, endsAt }) }); }
+export async function getTeacherAttendance(teacherId: string, month: string): Promise<TeacherAttendanceDay[]> { return api(`/teacher-attendance/${encodeURIComponent(teacherId)}?month=${encodeURIComponent(month)}`); }
+export async function overrideTeacherAttendance(teacherId: string, spaceId: string, classDate: string, status: 'attended' | 'missed'): Promise<void> { await api(`/admin/teacher-attendance/${encodeURIComponent(teacherId)}/${encodeURIComponent(spaceId)}/${classDate}`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+export async function submitClassLink(spaceId: string, meetingUrl: string): Promise<void> { await api(`/spaces/${spaceId}/class-link`, { method: 'POST', body: JSON.stringify({ meetingUrl }) }); }
+export async function getStudentAttendance(studentId: string): Promise<StudentAttendanceReport> { return api(`/admin/student-attendance/${encodeURIComponent(studentId)}`); }
 export async function getSessionAttendance(sessionId: string): Promise<Attendance[]> { return api(`/sessions/${sessionId}/attendance`); }
 export async function saveSessionAttendance(rows: Attendance[]): Promise<void> {
   if (rows.some(row => row.attendance_status === 'unmarked')) throw new Error('Choose an attendance status for every student.');

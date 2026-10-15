@@ -1,6 +1,14 @@
 export type Role = 'student' | 'teacher' | 'admin';
 export type Profile = { id: string; display_name: string; role: Role };
 export type CourseSpace = { id: string; courseTitle: string; cohortName: string };
+export type ChatContact = { id: string; display_name: string };
+export type ChatConversation = {
+  id: string; spaceId: string; studentId: string; teacherId: string;
+  studentName: string; teacherName: string; courseTitle: string; cohortName: string;
+  lastMessage: string | null; lastAt: string | null;
+};
+export type ChatMessage = { id: string; senderId: string; senderName: string; body: string; createdAt: string };
+export type ChatMessagePage = { messages: ChatMessage[]; hasMore: boolean };
 export type AdminDirectory = {
   profiles: Profile[];
   cohorts: Array<{ id: string; name: string }>;
@@ -26,7 +34,17 @@ export type Lesson = {
 export type Completion = { lesson_id: string; student_id: string; completed_at: string };
 export type ClassSession = {
   id: string; cohort_course_id: string; title: string; starts_at: string; ends_at: string | null;
-  meeting_url: string; created_by: string;
+  meeting_url: string | null; created_by: string;
+};
+export type WorkingHours = { effective_from: string; starts_at: string; ends_at: string };
+export type TeacherAttendanceDay = {
+  space_id: string; space_name: string; class_date: string; starts_at: string; ends_at: string;
+  submitted_at: string | null; automatic_status: 'attended' | 'missed' | 'pending' | 'upcoming';
+  status: 'attended' | 'missed' | 'pending' | 'upcoming'; overridden: boolean;
+};
+export type StudentAttendanceReport = {
+  classes: Array<{ session_id: string; title: string; starts_at: string; ends_at: string | null; cohort_name: string; course_title: string; attendance_status: 'attended' | 'missed' | 'cancelled' | null; counts_toward_package: boolean | null }>;
+  packages: Array<{ cohort_name: string; course_title: string; class_count: number; sessions_attended: number; remaining: number }>;
 };
 export type Attendance = {
   id?: string; session_id: string; student_id: string; attendance_status: 'attended' | 'missed' | 'cancelled' | 'unmarked';

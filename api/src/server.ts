@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { EventEmitter } from 'node:events';
+import type { PoolClient } from 'pg';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import { auth, takeDevelopmentResetLink } from './auth.js';
 import { pool, query } from './db.js';
@@ -99,6 +101,293 @@ const access = async (req: RequestWithUser, res: express.Response, spaceId: stri
   if (!await assertSpace(req, spaceId)) { res.status(403).json({ error: 'You do not have access to this learning space.' }); return false; }
   return true;
 };
+
+const chatEvents = new EventEmitter();
+chatEvents.setMaxListeners(0);
+let chatListener: PoolClient | null = null;
+let chatListenerStarting = false;
+let chatStopping = false;
+async function listenForChat() {
+  if (chatStopping || chatListener || chatListenerStarting) return;
+  chatListenerStarting = true;
+  try {
+    const client = await pool.connect();
+    chatListener = client;
+    const reconnect = () => {
+      if (chatListener !== client) return;
+      chatListener = null;
+      client.release(true);
+      if (!chatStopping) setTimeout(() => void listenForChat(), 1000).unref();
+    };
+    client.on('notification', notification => {
+      if (notification.channel === 'chat_messages' && notification.payload) chatEvents.emit('changed', notification.payload);
+    });
+    client.on('error', reconnect);
+    client.on('end', reconnect);
+    await client.query('listen chat_messages');
+  } catch (error) {
+    console.error('Chat event listener will reconnect.', error);
+    if (chatListener) { const client = chatListener; chatListener = null; client.release(true); }
+    if (!chatStopping) setTimeout(() => void listenForChat(), 1000).unref();
+  } finally { chatListenerStarting = false; }
+}
+
+const uuid = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const chatCursor = (value: unknown) => typeof value === 'string' && /^\d{1,19}$/.test(value) && BigInt(value) <= 9223372036854775807n ? value : null;
+const canReadConversation = async (req: RequestWithUser, conversationId: string) => {
+  const found = await query(`select 1 from chat_conversations c join cohort_courses cc on cc.id=c.cohort_course_id
+    where c.id=$1 and ($2='admin'
+      or ($2='student' and c.student_id=$3 and exists(select 1 from cohort_members cm where cm.cohort_id=cc.cohort_id and cm.student_id=$3))
+      or ($2='teacher' and c.teacher_id=$3 and exists(select 1 from teacher_assignments ta where ta.cohort_course_id=cc.id and ta.teacher_id=$3)))`,
+    [conversationId, req.role, req.user!.id]);
+  return Boolean(found.rowCount);
+};
+
+app.get('/api/chat/contacts', session, allow('student', 'teacher'), async (req: RequestWithUser, res, next) => {
+  try {
+    if (!uuid(req.query.spaceId)) return res.status(400).json({ error: 'Choose a valid learning space.' });
+    const result = req.role === 'student'
+      ? await query(`select distinct p.id, p.display_name from cohort_courses cc
+          join cohort_members cm on cm.cohort_id=cc.cohort_id and cm.student_id=$2
+          join teacher_assignments ta on ta.cohort_course_id=cc.id
+          join profiles p on p.id=ta.teacher_id where cc.id=$1 order by p.display_name`, [req.query.spaceId, req.user!.id])
+      : await query(`select distinct p.id, p.display_name from cohort_courses cc
+          join teacher_assignments ta on ta.cohort_course_id=cc.id and ta.teacher_id=$2
+          join cohort_members cm on cm.cohort_id=cc.cohort_id
+          join profiles p on p.id=cm.student_id where cc.id=$1 order by p.display_name`, [req.query.spaceId, req.user!.id]);
+    res.json(result.rows);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/chat/conversations', session, async (req: RequestWithUser, res, next) => {
+  try {
+    const result = await query(`select c.id, c.cohort_course_id as "spaceId", c.student_id as "studentId", c.teacher_id as "teacherId",
+      sp.display_name as "studentName", tp.display_name as "teacherName", co.title as "courseTitle", ch.name as "cohortName",
+      last_message.body as "lastMessage", last_message.created_at as "lastAt"
+      from chat_conversations c join profiles sp on sp.id=c.student_id join profiles tp on tp.id=c.teacher_id
+      join cohort_courses cc on cc.id=c.cohort_course_id join cohorts ch on ch.id=cc.cohort_id join courses co on co.id=cc.course_id
+      left join lateral (select body,created_at from chat_messages where conversation_id=c.id order by id desc limit 1) last_message on true
+      where ($1='admin'
+        or ($1='student' and c.student_id=$2 and exists(select 1 from cohort_members cm where cm.cohort_id=cc.cohort_id and cm.student_id=$2))
+        or ($1='teacher' and c.teacher_id=$2 and exists(select 1 from teacher_assignments ta where ta.cohort_course_id=cc.id and ta.teacher_id=$2)))
+      order by last_message.created_at desc nulls last, c.created_at desc`, [req.role, req.user!.id]);
+    res.json(result.rows);
+  } catch (error) { next(error); }
+});
+
+app.post('/api/chat/conversations', session, allow('student', 'teacher'), async (req: RequestWithUser, res, next) => {
+  try {
+    const { spaceId, peerId } = req.body || {};
+    if (!uuid(spaceId) || typeof peerId !== 'string' || !peerId) return res.status(400).json({ error: 'Choose a valid contact.' });
+    const studentId = req.role === 'student' ? req.user!.id : peerId;
+    const teacherId = req.role === 'teacher' ? req.user!.id : peerId;
+    const eligible = await query(`select 1 from cohort_courses cc
+      join cohort_members cm on cm.cohort_id=cc.cohort_id and cm.student_id=$2
+      join teacher_assignments ta on ta.cohort_course_id=cc.id and ta.teacher_id=$3
+      where cc.id=$1`, [spaceId, studentId, teacherId]);
+    if (!eligible.rowCount) return res.status(403).json({ error: 'This student and teacher are not connected in this learning space.' });
+    await query(`insert into chat_conversations(cohort_course_id,student_id,teacher_id) values($1,$2,$3) on conflict do nothing`, [spaceId, studentId, teacherId]);
+    const result = await query<{ id: string }>(`select id from chat_conversations where cohort_course_id=$1 and student_id=$2 and teacher_id=$3`, [spaceId, studentId, teacherId]);
+    res.status(201).json(result.rows[0]);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/chat/conversations/:conversationId/messages', session, async (req: RequestWithUser, res, next) => {
+  try {
+    const id = String(req.params.conversationId);
+    if (!uuid(id)) return res.status(400).json({ error: 'Invalid conversation.' });
+    if (!await canReadConversation(req, id)) return res.status(403).json({ error: 'You do not have access to this conversation.' });
+    const before = req.query.before === undefined ? null : chatCursor(req.query.before);
+    const after = req.query.after === undefined ? null : chatCursor(req.query.after);
+    if ((req.query.before !== undefined && !before) || (req.query.after !== undefined && !after) || (before && after)) return res.status(400).json({ error: 'Invalid message cursor.' });
+    const result = await query(`select m.id::text, m.sender_id as "senderId", p.display_name as "senderName", m.body, m.created_at as "createdAt"
+      from chat_messages m join profiles p on p.id=m.sender_id where m.conversation_id=$1
+      and ($2::bigint is null or m.id < $2) and ($3::bigint is null or m.id > $3)
+      order by m.id ${after ? 'asc' : 'desc'} limit 101`, [id, before, after]);
+    const hasMore = result.rows.length > 100;
+    const rows = result.rows.slice(0, 100);
+    res.json({ messages: after ? rows : rows.reverse(), hasMore });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/chat/conversations/:conversationId/messages', session, allow('student', 'teacher'), async (req: RequestWithUser, res, next) => {
+  try {
+    const id = String(req.params.conversationId);
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    if (!uuid(id) || !body || body.length > 2000) return res.status(400).json({ error: 'Enter a message of up to 2,000 characters.' });
+    const inserted = await query(`insert into chat_messages(conversation_id,sender_id,body)
+      select c.id,$2,$3 from chat_conversations c join cohort_courses cc on cc.id=c.cohort_course_id
+      where c.id=$1 and (($4='student' and c.student_id=$2 and exists(select 1 from cohort_members cm where cm.cohort_id=cc.cohort_id and cm.student_id=$2))
+        or ($4='teacher' and c.teacher_id=$2 and exists(select 1 from teacher_assignments ta where ta.cohort_course_id=cc.id and ta.teacher_id=$2)))
+      returning id::text`, [id, req.user!.id, body, req.role]);
+    if (!inserted.rowCount) return res.status(403).json({ error: 'You do not have access to send in this conversation.' });
+    await query('select pg_notify($1,$2)', ['chat_messages', id]).catch(error => console.error('Chat notification failed; connected clients will resync.', error));
+    res.status(201).json(inserted.rows[0]);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/chat/events', session, async (req: RequestWithUser, res, next) => {
+  try {
+    await listenForChat();
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+    res.write('event: sync\ndata: {}\n\n');
+    const changed = (conversationId: string) => {
+      void canReadConversation(req, conversationId).then(allowed => {
+        if (allowed && !res.writableEnded) res.write(`data: ${JSON.stringify({ conversationId })}\n\n`);
+      }).catch(error => console.error('Chat event access check failed.', error));
+    };
+    chatEvents.on('changed', changed);
+    const shutdownStream = () => res.end();
+    chatEvents.on('shutdown', shutdownStream);
+    const heartbeat = setInterval(() => { if (!res.writableEnded) res.write('event: sync\ndata: {}\n\n'); }, 15000);
+    const lifetime = setTimeout(() => res.end(), 5 * 60 * 1000);
+    const cleanup = () => { chatEvents.off('changed', changed); chatEvents.off('shutdown', shutdownStream); clearInterval(heartbeat); clearTimeout(lifetime); };
+    res.on('close', cleanup);
+  } catch (error) { next(error); }
+});
+
+const indiaDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const validMonth = (value: unknown) => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? value : null;
+const validDay = (value: unknown) => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+const validTime = (value: unknown) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+app.get('/api/spaces/:spaceId/working-hours', session, async (req: RequestWithUser, res, next) => {
+  try {
+    if (!await access(req, res, String(req.params.spaceId))) return;
+    const result = await query(`select effective_from::text, to_char(starts_at,'HH24:MI') starts_at,
+      to_char(ends_at,'HH24:MI') ends_at from space_working_hours where cohort_course_id=$1 order by effective_from desc limit 1`, [req.params.spaceId]);
+    res.json(result.rows[0] || null);
+  } catch (error) { next(error); }
+});
+app.put('/api/admin/spaces/:spaceId/working-hours', session, allow('admin'), async (req, res, next) => {
+  try {
+    const { startsAt, endsAt } = req.body;
+    if (!validTime(startsAt) || !validTime(endsAt) || startsAt >= endsAt) return res.status(400).json({ error: 'Choose a valid start and end time in IST.' });
+    const result = await query(`insert into space_working_hours(cohort_course_id,effective_from,starts_at,ends_at)
+      values($1,$2,$3,$4) on conflict(cohort_course_id,effective_from) do update
+      set starts_at=excluded.starts_at,ends_at=excluded.ends_at returning id`, [req.params.spaceId, indiaDate(), startsAt, endsAt]);
+    res.json(result.rows[0]);
+  } catch (error) { next(error); }
+});
+app.get('/api/teacher-attendance/:teacherId', session, async (req: RequestWithUser, res, next) => {
+  try {
+    const teacherId = String(req.params.teacherId);
+    if (req.role !== 'admin' && (req.role !== 'teacher' || req.user!.id !== teacherId)) return res.status(403).json({ error: 'You cannot view this attendance.' });
+    const month = validMonth(req.query.month);
+    if (!month) return res.status(400).json({ error: 'Choose a valid month.' });
+    const teacher = await query('select 1 from profiles where id=$1 and role=$2', [teacherId, 'teacher']);
+    if (!teacher.rowCount) return res.status(404).json({ error: 'Teacher not found.' });
+    const first = `${month}-01`;
+    const nextMonth = new Date(`${first}T00:00:00Z`); nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+    const end = nextMonth.toISOString().slice(0, 10);
+    const [spaces, hours, links, overrides] = await Promise.all([
+      query(`select cc.id,c.name cohort_name,co.title course_title,(ta.created_at at time zone 'Asia/Kolkata')::date::text assigned_from
+        from teacher_assignments ta join cohort_courses cc on cc.id=ta.cohort_course_id
+        join cohorts c on c.id=cc.cohort_id join courses co on co.id=cc.course_id where ta.teacher_id=$1`, [teacherId]),
+      query(`select h.cohort_course_id,h.effective_from::text,to_char(h.starts_at,'HH24:MI') starts_at,to_char(h.ends_at,'HH24:MI') ends_at
+        from space_working_hours h join teacher_assignments ta on ta.cohort_course_id=h.cohort_course_id
+        where ta.teacher_id=$1 and h.effective_from<$2 order by h.effective_from`, [teacherId, end]),
+      query(`select l.cohort_course_id,l.class_date::text,l.submitted_at from teacher_class_links l
+        where l.teacher_id=$1 and l.class_date >= $2 and l.class_date < $3`, [teacherId, first, end]),
+      query(`select cohort_course_id,class_date::text,attendance_status from teacher_attendance_overrides
+        where teacher_id=$1 and class_date >= $2 and class_date < $3`, [teacherId, first, end]),
+    ]);
+    const today = indiaDate();
+    const now = new Date();
+    const rows = [];
+    for (const space of spaces.rows) {
+      for (let day = new Date(`${first}T00:00:00Z`); day < nextMonth; day.setUTCDate(day.getUTCDate() + 1)) {
+        if (day.getUTCDay() === 0 || day.getUTCDay() === 6) continue;
+        const classDate = day.toISOString().slice(0, 10);
+        if (classDate < space.assigned_from) continue;
+        const window = hours.rows.filter(row => row.cohort_course_id === space.id && row.effective_from <= classDate).at(-1);
+        if (!window) continue;
+        const link = links.rows.find(row => row.cohort_course_id === space.id && row.class_date === classDate);
+        const override = overrides.rows.find(row => row.cohort_course_id === space.id && row.class_date === classDate);
+        const start = new Date(`${classDate}T${window.starts_at}:00+05:30`);
+        const deadline = new Date(`${classDate}T23:30:00+05:30`);
+        const automatic = link ? (new Date(link.submitted_at) <= start ? 'attended' : 'missed') : now > deadline ? 'missed' : 'pending';
+        rows.push({ space_id: space.id, space_name: `${space.cohort_name} · ${space.course_title}`, class_date: classDate,
+          starts_at: window.starts_at, ends_at: window.ends_at, submitted_at: link?.submitted_at || null,
+          automatic_status: classDate > today ? 'upcoming' : automatic, status: override?.attendance_status || (classDate > today ? 'upcoming' : automatic), overridden: Boolean(override) });
+      }
+    }
+    res.json(rows);
+  } catch (error) { next(error); }
+});
+app.put('/api/admin/teacher-attendance/:teacherId/:spaceId/:classDate', session, allow('admin'), async (req: RequestWithUser, res, next) => {
+  try {
+    const { teacherId, spaceId, classDate } = req.params;
+    if (!validDay(classDate) || classDate > indiaDate()) return res.status(400).json({ error: 'Choose a past or current date.' });
+    if (!['attended','missed'].includes(req.body.status)) return res.status(400).json({ error: 'Choose attended or missed.' });
+    const weekday = new Date(`${classDate}T00:00:00Z`).getUTCDay();
+    if (weekday === 0 || weekday === 6) return res.status(400).json({ error: 'Teacher attendance is scheduled Monday through Friday.' });
+    const assigned = await query(`select 1 from teacher_assignments ta join space_working_hours h
+      on h.cohort_course_id=ta.cohort_course_id and h.effective_from<=$3
+      where ta.teacher_id=$1 and ta.cohort_course_id=$2 and (ta.created_at at time zone 'Asia/Kolkata')::date<=$3 limit 1`, [teacherId, spaceId, classDate]);
+    if (!assigned.rowCount) return res.status(404).json({ error: 'Teacher assignment not found.' });
+    await query(`insert into teacher_attendance_overrides(cohort_course_id,teacher_id,class_date,attendance_status,marked_by)
+      values($1,$2,$3,$4,$5) on conflict(cohort_course_id,teacher_id,class_date) do update
+      set attendance_status=excluded.attendance_status,marked_by=excluded.marked_by,marked_at=now()`, [spaceId, teacherId, classDate, req.body.status, req.user!.id]);
+    res.sendStatus(204);
+  } catch (error) { next(error); }
+});
+app.post('/api/spaces/:spaceId/class-link', session, allow('teacher'), async (req: RequestWithUser, res, next) => {
+  const client = await pool.connect();
+  try {
+    const spaceId = String(req.params.spaceId);
+    if (!await access(req, res, spaceId)) return;
+    const today = indiaDate();
+    if (new Date() > new Date(`${today}T23:30:00+05:30`)) return res.status(400).json({ error: 'Today’s link deadline has passed (11:30 pm IST).' });
+    const meetingUrl = String(req.body.meetingUrl || '').trim();
+    let parsed: URL;
+    try { parsed = new URL(meetingUrl); } catch { return res.status(400).json({ error: 'Enter a valid HTTPS meeting link.' }); }
+    if (parsed.protocol !== 'https:') return res.status(400).json({ error: 'Enter a valid HTTPS meeting link.' });
+    if ([0, 6].includes(new Date(`${today}T00:00:00Z`).getUTCDay())) return res.status(400).json({ error: 'Classes are scheduled Monday through Friday.' });
+    await client.query('begin');
+    const window = await client.query(`select starts_at,ends_at from space_working_hours where cohort_course_id=$1 and effective_from<=$2
+      order by effective_from desc limit 1`, [spaceId, today]);
+    if (!window.rowCount) { await client.query('rollback'); return res.status(400).json({ error: 'An admin must set this learning space’s working hours first.' }); }
+    const existing = await client.query('select session_id from teacher_class_links where cohort_course_id=$1 and teacher_id=$2 and class_date=$3 for update', [spaceId, req.user!.id, today]);
+    if (existing.rowCount) { await client.query('rollback'); return res.status(409).json({ error: 'You already submitted today’s class link.' }); }
+    const start = `${today}T${String(window.rows[0].starts_at).slice(0, 8)}+05:30`;
+    const end = `${today}T${String(window.rows[0].ends_at).slice(0, 8)}+05:30`;
+    const space = await client.query(`select c.name cohort_name,co.title course_title from cohort_courses cc
+      join cohorts c on c.id=cc.cohort_id join courses co on co.id=cc.course_id where cc.id=$1`, [spaceId]);
+    const title = `${space.rows[0].course_title} class`;
+    const sessionRow = await client.query(`insert into class_sessions(cohort_course_id,title,starts_at,ends_at,meeting_url,created_by)
+      values($1,$2,$3,$4,$5,$6) returning id`, [spaceId, title, start, end, meetingUrl, req.user!.id]);
+    await client.query(`insert into teacher_class_links(cohort_course_id,teacher_id,class_date,session_id)
+      values($1,$2,$3,$4)`, [spaceId, req.user!.id, today, sessionRow.rows[0].id]);
+    await client.query('commit');
+    res.status(201).json({ session_id: sessionRow.rows[0].id });
+  } catch (error) { await client.query('rollback').catch(() => undefined); next(error); }
+  finally { client.release(); }
+});
+app.get('/api/admin/student-attendance/:studentId', session, allow('admin'), async (req, res, next) => {
+  try {
+    const studentId = String(req.params.studentId);
+    const student = await query('select 1 from profiles where id=$1 and role=$2', [studentId, 'student']);
+    if (!student.rowCount) return res.status(404).json({ error: 'Student not found.' });
+    const [classes, packages] = await Promise.all([
+      query(`select s.id session_id,s.title,s.starts_at,s.ends_at,c.name cohort_name,co.title course_title,
+        a.attendance_status,a.counts_toward_package from class_sessions s
+        join cohort_courses cc on cc.id=s.cohort_course_id join cohorts c on c.id=cc.cohort_id
+        join courses co on co.id=cc.course_id join cohort_members cm on cm.cohort_id=cc.cohort_id and cm.student_id=$1
+        left join attendance a on a.session_id=s.id and a.student_id=$1 order by s.starts_at desc`, [studentId]),
+      query(`select c.name cohort_name,co.title course_title,p.class_count,sp.sessions_attended,
+        greatest(0,p.class_count-sp.sessions_attended) remaining from student_packages sp
+        join package_plans p on p.id=sp.plan_id join cohort_courses cc on cc.id=sp.cohort_course_id
+        join cohorts c on c.id=cc.cohort_id join courses co on co.id=cc.course_id
+        where sp.student_id=$1 order by c.name,co.title`, [studentId]),
+    ]);
+    res.json({ classes: classes.rows, packages: packages.rows });
+  } catch (error) { next(error); }
+});
 
 app.get('/api/admin/directory', session, allow('admin'), async (_req, res, next) => {
   try {
@@ -345,15 +634,6 @@ app.get('/api/spaces/:spaceId/attendance', session, async (req: RequestWithUser,
     const result = await query(`select a.* from attendance a join class_sessions s on s.id=a.session_id
       where s.cohort_course_id=$1 and ($2<>'student' or a.student_id=$3) order by s.starts_at desc`, [spaceId, req.role, req.user!.id]);
     res.json(result.rows);
-  } catch (error) { next(error); }
-});
-app.post('/api/spaces/:spaceId/sessions', session, allow('teacher'), async (req: RequestWithUser, res, next) => {
-  try {
-    const spaceId = String(req.params.spaceId);
-    if (!await access(req, res, spaceId)) return;
-    const result = await query(`insert into class_sessions(cohort_course_id,title,starts_at,ends_at,meeting_url,created_by)
-      values($1,$2,$3,$4,$5,$6) returning id`, [spaceId, String(req.body.title || '').trim(), req.body.startsAt, req.body.endsAt || null, req.body.meetingUrl || null, req.user!.id]);
-    res.status(201).json(result.rows[0]);
   } catch (error) { next(error); }
 });
 app.get('/api/sessions/:sessionId/attendance', session, allow('teacher','admin'), async (req: RequestWithUser, res, next) => {
@@ -650,6 +930,12 @@ const retentionTimer = setInterval(() => { void runRetentionCleanup(); void runD
 retentionTimer.unref();
 void runRetentionCleanup();
 void runDeletedFileCleanup();
-const shutdown = () => { clearInterval(retentionTimer); server.close(() => void pool.end()); };
+const shutdown = () => {
+  clearInterval(retentionTimer);
+  chatStopping = true;
+  chatEvents.emit('shutdown');
+  if (chatListener) { const client = chatListener; chatListener = null; client.release(true); }
+  server.close(() => void pool.end());
+};
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
