@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 umask 077
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="${TUTION_LMS_ROOT:-/opt/tution-lms}"
 ENV_FILE="${ROOT_DIR}/.env"
 BACKUP_CONFIG="${BACKUP_CONFIG:-/etc/tution-lms-backup.conf}"
 LOCK_FILE="/run/tution-lms-backup/backup.lock"
@@ -37,8 +37,15 @@ exec 9>"${LOCK_FILE}"
 flock -n 9 || { echo "Another backup is already running." >&2; exit 1; }
 
 cd "${ROOT_DIR}"
-docker compose --env-file "${ENV_FILE}" exec -T db sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "${WORK_DIR}/${DAILY_NAME%.age}"
-docker compose --env-file "${ENV_FILE}" exec -T db pg_restore --list - < "${WORK_DIR}/${DAILY_NAME%.age}" > "${WORK_DIR}/archive.list"
+# Keep the full schema and durable learning/account records. Session cookies,
+# password-reset tokens, unfinished upload state, and cleanup queues are
+# temporary and should not be copied into long-lived off-site backups.
+docker compose --env-file "${ENV_FILE}" exec -T db sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --no-owner --no-acl \
+  --exclude-table-data=public.session \
+  --exclude-table-data=public.verification \
+  --exclude-table-data=public.file_uploads \
+  --exclude-table-data=public.deleted_file_cleanup' > "${WORK_DIR}/${DAILY_NAME%.age}"
+docker compose --env-file "${ENV_FILE}" exec -T db pg_restore --list < "${WORK_DIR}/${DAILY_NAME%.age}" > "${WORK_DIR}/archive.list"
 [[ -s "${WORK_DIR}/archive.list" ]]
 age --encrypt --recipient "${RECIPIENT}" --output "${WORK_DIR}/${DAILY_NAME}" "${WORK_DIR}/${DAILY_NAME%.age}"
 [[ -s "${WORK_DIR}/${DAILY_NAME}" ]]

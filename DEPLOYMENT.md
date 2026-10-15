@@ -15,7 +15,7 @@ This runbook deploys the existing React/Vite client, Express + Better Auth API, 
 - There are no tests configured in either package. Root `index.html` is an old prototype; deploy `app/` only. Netlify config is for existing hosting and is not used by this Compose setup.
 - The brief says PostgreSQL is on Render, while repository migration history and docs mention Supabase. The live source provider, schema version, data, and account/file inventory cannot be established from this checkout. Treat source inventory and a verified export as a production blocker. Never point the migration commands at the old database.
 
-The Compose configuration builds a static Nginx client and a non-root Node API image. PostgreSQL uses a named volume, health checks, and an internal-only database network shared only with the API; Nginx and the API share a separate frontend network. API migrations are not run on startup. The backup host script creates custom-format dumps, checks the archive, encrypts with `age`, uploads through a separately configured `rclone` remote, downloads/verifies the uploaded object, then applies 7-day daily and 28-day weekly retention. Keep the age private identity and rclone credentials out of the application `.env` and off the VPS where possible.
+The Compose configuration builds a static Nginx client and a non-root Node API image. PostgreSQL uses a named volume, health checks, and an internal-only database network shared only with the API; Nginx and the API share a separate frontend network. API migrations are not run on startup. The backup host script creates a compressed custom-format dump of the schema and durable account/learning data, omitting session cookies, reset tokens, unfinished upload state, and cleanup queues. It checks the archive, encrypts with `age`, uploads through a private `rclone` remote, downloads/verifies the uploaded object, then applies 7-day daily and 28-day weekly retention. Keep the age private identity off the VPS after copying it to secure storage; keep rclone credentials root-only and out of Git.
 
 ## 1. VPS prerequisites
 
@@ -201,7 +201,7 @@ Create a private bucket and scoped S3 credentials with only required bucket/obje
 
 ## 13. Automated database backups
 
-Configure the host's separate `rclone` remote and age encryption recipient. Keep the age private key offline or in a separate secure system. Put `BACKUP_RCLONE_REMOTE` and `BACKUP_AGE_RECIPIENT` in `/etc/tution-lms-backup.conf`, owned by root with mode 600; configure `rclone` in `/etc/rclone/tution-lms.conf`, also root-only. The systemd service points to that file. These credentials are separate from application credentials. Create protected backup storage:
+Configure the host's private `rclone` remote and age encryption recipient. Keep the age private key offline or in a separate secure system. Put `BACKUP_RCLONE_REMOTE` and `BACKUP_AGE_RECIPIENT` in `/etc/tution-lms-backup.conf`, owned by root with mode 600; configure `rclone` in `/etc/rclone/tution-lms.conf`, also root-only. The systemd service points to that file. A dedicated R2 object-access credential scoped to the backup bucket is preferred; if the existing R2 credential is reused, protect the root-only config and rotate it separately when a dedicated token is available. Create protected backup storage:
 
 ```bash
 sudo install -d -m 700 /var/backups/tution-lms
